@@ -7,8 +7,8 @@ enum ReportMagic
    MAGIC_XAUSD_M15   = 10100015,
    MAGIC_BTCUSD_M1   = 10200001,
    MAGIC_BTCUSD_M15  = 10200015,
-   MAGIC_JD30_M1     = 10300001,
-   MAGIC_JD30_M15    = 10300015,
+   MAGIC_DJ30_M1     = 10300001,
+   MAGIC_DJ30_M15    = 10300015,
    MAGIC_UKOUSD_M1   = 10400001,
    MAGIC_UKOUSD_M15  = 10400015
 };
@@ -38,10 +38,24 @@ datetime GetFromTime()
    return TimeCurrent() - InpDaysBack * 86400;
 }
 
+bool PassMagicFilter_paused(long magic)
+{
+   if(InpReportMagic == MAGIC_ALL)
+      return true;
+
+   return (magic == (long)InpReportMagic);
+}
+
 bool PassMagicFilter(long magic)
 {
    if(InpReportMagic == MAGIC_ALL)
       return true;
+
+   if(InpReportMagic == MAGIC_DJ30_M1)
+      return (magic == 10300001 || magic == 5551113);
+
+   if(InpReportMagic == MAGIC_DJ30_M15)
+      return (magic == 10300015 || magic == 55511132);
 
    return (magic == (long)InpReportMagic);
 }
