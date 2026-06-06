@@ -26,13 +26,59 @@ datetime GetTodayStart()
    return StructToTime(dt);
 }
 
-datetime GetFromTime()
+datetime GetFromTime_arch()
 {
    if(InpTodayOnly)
       return GetTodayStart();
 
    return TimeCurrent() - InpDaysBack * 86400;
 }
+
+
+
+struct ReportPeriod
+{
+   datetime from;
+   datetime to;
+};
+
+datetime GetDayStart(datetime t)
+{
+   MqlDateTime dt;
+   TimeToStruct(t, dt);
+
+   dt.hour = 0;
+   dt.min  = 0;
+   dt.sec  = 0;
+
+   return StructToTime(dt);
+}
+
+ReportPeriod GetFromTime()
+{
+   ReportPeriod period;
+
+   datetime todayStart = GetDayStart(TimeCurrent());
+
+   if(InpTodayOnly)
+   {
+      // From today's midnight until now.
+      period.from = todayStart;
+      period.to   = TimeCurrent();
+   }
+   else
+   {
+      // From midnight N days ago until today's midnight.
+      int daysBack = MathMax(1, InpDaysBack);
+
+      period.from = todayStart - daysBack * 86400;
+      period.to   = todayStart;
+   }
+
+   return period;
+}
+
+
 
 int GetTimeframeCode(ENUM_TIMEFRAMES tf)
 {
@@ -210,8 +256,8 @@ void PrintLotStats(double &lotValues[], int &lotCounts[])
 
 void RunHistoryReport()
 {
-   datetime fromTime = GetFromTime();
-   datetime toTime   = TimeCurrent();
+   datetime fromTime = GetFromTime().from;
+   datetime toTime   = GetFromTime().to;
 
    if(!HistorySelect(fromTime, toTime))
    {
