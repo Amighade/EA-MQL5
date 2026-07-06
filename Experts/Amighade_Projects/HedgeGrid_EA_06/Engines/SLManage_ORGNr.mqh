@@ -46,7 +46,6 @@
 #ifndef SL_MANAGER_MQH
 #define SL_MANAGER_MQH
 
-#include "SLGridFeasibility.mqh"
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
 #include "../Utils/TradeUtils.mqh"
@@ -80,7 +79,7 @@ ENUM_POSITION_TYPE GetWinningDirection(GridState &state)
 //+------------------------------------------------------------------+
 //| Collect all open positions for this EA into a flat array          |
 //+------------------------------------------------------------------+
-int CollectAllPositions(int magicNumber, SLPos &positions[])
+int CollectAllPositions(int magicNumber, SLPosInfo &positions[])
 {
    int count = 0;
    for(int i = 0; i < PositionsTotal(); i++)
@@ -90,15 +89,14 @@ int CollectAllPositions(int magicNumber, SLPos &positions[])
       if(PositionGetString(POSITION_SYMBOL) != _Symbol)     continue;
       if(PositionGetInteger(POSITION_MAGIC) != magicNumber) continue;
       ArrayResize(positions, count+1);
-      positions[count].ticket = t;
-      positions[count].entry  = PositionGetDouble(POSITION_PRICE_OPEN);
-      positions[count].lot    = PositionGetDouble(POSITION_VOLUME);
-      positions[count].type   = (int)PositionGetInteger(POSITION_TYPE);
+      positions[count].entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      positions[count].lot        = PositionGetDouble(POSITION_VOLUME);
+      positions[count].type       = (int)PositionGetInteger(POSITION_TYPE);
       count++;
      }
    return count;
 }
-   
+
 //+------------------------------------------------------------------+
 //| Net PnL of the whole basket if closed at candidateSL              |
 //+------------------------------------------------------------------+
@@ -127,19 +125,63 @@ double NetPnLAtCandidate(double candidateSL, ENUM_POSITION_TYPE winnerSide,
 //| Grid-line SL candidate search (Brick 6 core algorithm)            |
 //+------------------------------------------------------------------+
 double CalculateSLCandidate(ENUM_POSITION_TYPE winnerSide, int magicNumber)
-
 {
+   double lastHitPrice = GetLastEntryPrice(winnerSide, magicNumber);
+   if(lastHitPrice <= 0) return 0.0;
 
-   SLPos list[];
+   SLPosInfo positions[];
+   int count = CollectAllPositions(magicNumber, positions);
+   if(count == 0) return 0.0;
 
-   int count = CollectAllPositions(magicNumber, list);
+   double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   double spread  = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   if(tickSz <= 0 || tickVal <= 0) return 0.0;
+   double moneyPerPrice = tickVal / tickSz;
 
-   if(count <= 0)
+   double minStop = MinStopDistancePrice(_Symbol);
+   double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask     = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
 
-      return 0;
+   int    maxDepth   = MathMax(InpInitialGridLevels, InpMaxGridLevels);
+   int    maxValidN  = 0;
+   double lastValidPrice = 0.0;
 
-   return SL_FindCandidate(list, count, winnerSide, magicNumber);
+   for(int n = 1; n <= maxDepth; n++)
+     {
+      double candidate = (winnerSide == POSITION_TYPE_BUY) ?
+                         lastHitPrice - InpGridSpacing * (n - 1) :
+                         lastHitPrice + InpGridSpacing * (n - 1);
+      candidate = AlignToTick(_Symbol, candidate);
 
+      double netPnL = NetPnLAtCandidate(candidate, winnerSide, positions, count, moneyPerPrice, spread);
+
+      bool distOk = (winnerSide == POSITION_TYPE_BUY) ?
+                    candidate <= bid - minStop :
+                    candidate >= ask + minStop;
+
+      if(netPnL >= 0.0 && distOk)
+        {
+         maxValidN      = n;
+         lastValidPrice = candidate;
+        }
+      else
+         break; // assume monotonic: once invalid, deeper n stays invalid
+
+      if(InpSLMode == SL_LAST_HIT_GRID) break; // only ever test n=1
+     }
+
+   if(maxValidN == 0) return 0.0; // no safe level yet
+
+   if(InpSLMode == SL_LAST_HIT_GRID)
+      return lastValidPrice;
+
+   // SL_N_BACK_GRID: depth-clamp requested N to farthest still-safe grid line
+   int effectiveN = MathMin(MathMax(InpSLNBack, 1), maxValidN);
+   double finalCandidate = (winnerSide == POSITION_TYPE_BUY) ?
+                           lastHitPrice - InpGridSpacing * (effectiveN - 1) :
+                           lastHitPrice + InpGridSpacing * (effectiveN - 1);
+   return AlignToTick(_Symbol, finalCandidate);
 }
 
 //+------------------------------------------------------------------+

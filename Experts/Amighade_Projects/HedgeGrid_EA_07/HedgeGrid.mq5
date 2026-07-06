@@ -116,6 +116,9 @@ void OnDeinit(const int reason)
    DeinitHistoryLogger();
    EventKillTimer();
    LogDebug(StringFormat("HedgeGrid stopped. Reason=%d", reason));
+   
+   ExecuteEmergencyClose(g_state);
+   ResetSLManager();
 }
 
 //+------------------------------------------------------------------+
@@ -126,30 +129,33 @@ void OnTick()
    bool prevSession = g_state.sessionAllowed;
    g_state.sessionAllowed = IsSessionAllowed();
 
-   // If no positions at all remain → cleanup already done externally
-   /*if(CountPositions(g_state.magicNumber) == 0)
+   // If cleanupInProgress but no positions remain → unstick immediately
+   // (positions may have been closed by safety stop or external event)
+   if(g_state.cleanupInProgress && CountPositions(g_state.magicNumber) == 0)
      {
-      g_state.cleanupInProgress = false;
-      g_state.cleanupStep       = 0;
-      g_state.slApplied         = false;
-      g_state.slWallArmed      = false;
+      g_state.cleanupInProgress    = false;
+      g_state.cleanupStep          = 0;
+      g_state.slApplied            = false;
+      g_state.slWallArmed          = false;
       g_state.slAllWinnersClosed   = false;
-      g_state.refillNeeded    = true;
+      ResetSLManager();
       LogCleanupComplete();
-      return;
-     }*/
+      // Act on refill/rebuild immediately rather than waiting for next candle
+      if(InpEnableRefillInside || InpEnableRefillOutside)
+         CheckAndRefill(g_state);       // Style B/C: repair gap
+      else
+        {
+         g_state.gridPlaced = false;    // Style A: force full rebuild on next candle
+         LogDebug("[Coordinator] Unstuck: grid will rebuild on next candle.");
+        }
+     }
         
    if(!prevSession && g_state.sessionAllowed)
       LogSessionChange(true, GetActiveSessionName());
    if(prevSession && !g_state.sessionAllowed)
       LogSessionChange(false, "Session ended");
       
-   // Safety: if cleanupInProgress but no positions remain → unstick
-   if(g_state.cleanupInProgress && CountPositions(g_state.magicNumber) == 0)
-     {
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done) { /* rebuild logic */ }
-     }
+   // (Unstick already handled above for the cleanupInProgress + no positions case)
   
    g_state.basketProfit = CalculateBasketProfit(g_state.magicNumber);
 
