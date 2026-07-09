@@ -59,8 +59,7 @@ enum ENUM_LOT_MODE
    LOT_FULL = 0,  // Full ladder/count
    LOT_HALF = 1,  // Half ladder/count (low margin fallback)
   };
-  
-double InpCommissionPerLot = 0.0;
+
 //+------------------------------------------------------------------+
 //| INPUT PARAMETERS                                                  |
 //+------------------------------------------------------------------+
@@ -121,7 +120,7 @@ input string ExtraWindow1    = "";    // Extra window 1: HH:MM-HH:MM (GMT)
 input string ExtraWindow2    = "";    // Extra window 2: HH:MM-HH:MM (GMT)
 
 //--- Commission (used in SL / net PnL safety calculation)
-//input double InpCommissionPerLot = 6.0;  // Commission per lot round-turn ($)
+input double InpCommissionPerLot = 6.0;  // Commission per lot round-turn ($)
 
 //--- Magic Number (0 = auto from symbol + timeframe)
 input int    InpMagicNumber  = 0;     // Magic number (0 = auto-generate)

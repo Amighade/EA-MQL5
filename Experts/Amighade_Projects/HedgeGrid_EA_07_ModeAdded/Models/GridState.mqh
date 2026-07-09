@@ -3,12 +3,29 @@
 
 #include "../Inputs.mqh"
 
-enum EA_MODE
-{
-   MODE_RUNNING = 0,
-   MODE_PAUSED,
-   MODE_SHUTDOWN
-};
+//+------------------------------------------------------------------+
+//| Operational mode — separate from the brick system. This governs  |
+//| whether the EA is allowed to grow the grid at all, independent   |
+//| of which bricks are enabled. Toggled via the dashboard MODE      |
+//| label (click to cycle) — see Dashboard/ChartPanel.mqh.           |
+//|   MODE_RUNNING  : normal operation, every enabled brick active.  |
+//|   MODE_PAUSED   : "maintenance" — no new builds/refills/shifts/  |
+//|                   recenters, but SL management, cleanup          |
+//|                   sequences, and emergency close all continue.   |
+//|   MODE_SHUTDOWN : same opening-logic freeze as Paused, PLUS the  |
+//|                   coordinator repeatedly drives an emergency     |
+//|                   close every tick until the account is fully    |
+//|                   flat (shutdownFlat becomes true).              |
+//| NOT reset by ResetGridState (see below) — a cycle reset (e.g.    |
+//| from the emergency close that Shutdown itself triggers) must     |
+//| never silently bounce the mode back to Running.                  |
+//+------------------------------------------------------------------+
+enum ENUM_EA_MODE
+  {
+   MODE_RUNNING  = 0,
+   MODE_PAUSED   = 1,
+   MODE_SHUTDOWN = 2,
+  };
 
 struct GridState
   {
@@ -17,6 +34,10 @@ struct GridState
    bool           gridPlaced;
    int            passCounter;       // used by Brick 1 (lot increase mode A)
    ENUM_LOT_MODE  lotMode;
+
+   //--- Operational mode (Running/Paused/Shutdown) — see enum above
+   ENUM_EA_MODE   mode;
+   bool           shutdownFlat;      // true once Shutdown has closed everything
 
    //--- Grid anchors
    double         anchorBuy;
@@ -67,10 +88,6 @@ struct GridState
 
    //--- Magic number
    int            magicNumber;
-   
-   //--- Ea Mode
-   EA_MODE        mode;
-   
   };
 
 void ResetGridState(GridState &state)
@@ -104,9 +121,21 @@ void ResetGridState(GridState &state)
    state.marginWarning      = false;
    state.sessionAllowed     = false;
    state.gapFaultDetected   = false;
-   state.mode               = MODE_RUNNING;
    // lastBarGridCheck / lastBarRecenter NOT reset — candle trackers persist across cycles
    // magicNumber NOT reset — set once in OnInit
+   // mode / shutdownFlat NOT reset — Shutdown must survive the very emergency
+   // close it triggers; only OnInit sets mode = MODE_RUNNING (a true first start).
+  }
+
+//+------------------------------------------------------------------+
+//| Call ONCE from OnInit only — sets the initial operational mode.  |
+//| Never call this from anywhere a cycle reset happens (that would  |
+//| defeat the whole point of excluding mode from ResetGridState).   |
+//+------------------------------------------------------------------+
+void InitOperationalMode(GridState &state)
+  {
+   state.mode         = MODE_RUNNING;
+   state.shutdownFlat = false;
   }
 
 #endif

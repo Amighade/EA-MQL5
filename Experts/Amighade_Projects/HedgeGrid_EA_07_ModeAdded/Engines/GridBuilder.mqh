@@ -246,18 +246,4 @@ void CheckAndRefill(GridState &state)
                          CountOrderType(ORDER_TYPE_SELL_STOP, state.magicNumber)));
 }
 
-//+------------------------------------------------------------------+
-//| Reset Grid engine state                                         |
-//+------------------------------------------------------------------+
-void ResetGridBuilder(GridState &state)
-{
-   state.anchorBuy       = 0.0;
-   state.anchorSell      = 0.0;
-   state.gridPlaced      = false;
-   state.cycleActive     = false;
-   state.currentBlockLot = 0.0;
-   state.farthestHitBuy  = 0.0;
-   state.farthestHitSell = 0.0;
-}
-
 #endif

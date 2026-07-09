@@ -30,32 +30,50 @@
 #include "TelegramUtils.mqh"
 
 //+------------------------------------------------------------------+
-//| Universal safety stop. Call from anywhere a critical trade         |
-//| operation has definitively failed, or on manual emergency close. |
+//| Close-everything mechanics only — no alert, no state reset.      |
+//| Returns true once nothing was left to close/delete this pass     |
+//| (does NOT guarantee flat if a close/delete failed — caller       |
+//| checks CountPositions/CountOrders itself if it needs certainty). |
+//| Used both by TriggerSafetyStop (below) and by MODE_SHUTDOWN's    |
+//| per-tick retry loop, which must NOT alert on every single tick.  |
 //+------------------------------------------------------------------+
-void TriggerSafetyStop(GridState &state, string reason)
+bool SilentCloseAll(int magicNumber, int &closedCount, int &closeFailCount,
+                    int &deletedCount, int &deleteFailCount)
   {
-   LogDebug(StringFormat("[SafetyNet] TRIGGERED. Reason=%s. Closing everything.", reason));
+   closedCount = closeFailCount = deletedCount = deleteFailCount = 0;
 
-   // --- Close positions first (closing always outranks opening/modifying) ---
    ulong posOrder[];
-   BuildZigzagPositionOrder(state.magicNumber, posOrder);
-   int closedCount = 0, closeFailCount = 0;
+   BuildZigzagPositionOrder(magicNumber, posOrder);
    for(int i = 0; i < ArraySize(posOrder); i++)
      {
       if(ClosePosition(posOrder[i])) closedCount++;
       else                           closeFailCount++;
      }
 
-   // --- Delete all pending orders ---
    ulong ordOrder[];
-   BuildProximityOrderOrder(state.magicNumber, ordOrder);
-   int deletedCount = 0, deleteFailCount = 0;
+   BuildProximityOrderOrder(magicNumber, ordOrder);
    for(int i = 0; i < ArraySize(ordOrder); i++)
      {
       if(DeleteOrder(ordOrder[i])) deletedCount++;
       else                         deleteFailCount++;
      }
+
+   return (ArraySize(posOrder) == 0 && ArraySize(ordOrder) == 0);
+  }
+
+//+------------------------------------------------------------------+
+//| Universal safety stop — the LOUD path (alerts + Telegram + full  |
+//| state reset). Call from anywhere a critical trade operation has  |
+//| definitively failed, or on manual/mode-switch emergency close.   |
+//| Do NOT call this from a per-tick retry loop — use SilentCloseAll |
+//| for repeated attempts once the first alert has already fired.    |
+//+------------------------------------------------------------------+
+void TriggerSafetyStop(GridState &state, string reason)
+  {
+   LogDebug(StringFormat("[SafetyNet] TRIGGERED. Reason=%s. Closing everything.", reason));
+
+   int closedCount, closeFailCount, deletedCount, deleteFailCount;
+   SilentCloseAll(state.magicNumber, closedCount, closeFailCount, deletedCount, deleteFailCount);
 
    string summary = StringFormat(
       "HedgeGrid SAFETY STOP\nSymbol: %s\nReason: %s\nPositions closed: %d (failed: %d)\nOrders deleted: %d (failed: %d)\nTime: %s",
@@ -67,6 +85,9 @@ void TriggerSafetyStop(GridState &state, string reason)
    SendTelegramMessage(summary);
 
    // --- Reset all cycle state so the next candle-open check rebuilds fresh ---
+   // NOTE: mode / shutdownFlat are NOT touched by ResetGridState (by design —
+   // see Models/GridState.mqh) so a Shutdown-triggered close can never bounce
+   // the mode back to Running.
    int savedMagic = state.magicNumber;
    ResetGridState(state);
    state.magicNumber = savedMagic;

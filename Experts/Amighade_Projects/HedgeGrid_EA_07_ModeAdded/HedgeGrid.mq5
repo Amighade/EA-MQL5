@@ -56,14 +56,13 @@ GridState g_state;
 //| On the EA's very first run, gridPlaced starts false, so the first |
 //| candle-open tick after start builds the first grid automatically.|
 //+------------------------------------------------------------------+
-void CheckAndBuildGrid(GridState &state)
+void CheckAndBuildGridOnNewCandle(GridState &state)
 {
-   //if(!IsNewBar(state.lastBarGridCheck)) return;
+   if(!IsNewBar(state.lastBarGridCheck)) return;
    if(!state.sessionAllowed)             return;
    if(state.gridPlaced)                  return;
    if(state.cleanupInProgress)           return; // closing always outranks opening
 
-   
    state.lotMode = CheckMargin(state);
    if(state.marginWarning && AccountInfoDouble(ACCOUNT_MARGIN_FREE) < InpMinAllowedMargin)
      {
@@ -88,6 +87,7 @@ int OnInit()
    InitTradeUtils(g_state.magicNumber);
    if(!InitHistoryLogger()) LogDebug("Warning: History logger failed.");
    ResetGridState(g_state);
+   InitOperationalMode(g_state); // mode = MODE_RUNNING — only ever set here, never by a cycle reset
    g_state.sessionAllowed = IsSessionAllowed();
    g_state.lotMode        = CheckMargin(g_state);
    SetTelegramRoute();
@@ -116,9 +116,6 @@ void OnDeinit(const int reason)
    DeinitHistoryLogger();
    EventKillTimer();
    LogDebug(StringFormat("HedgeGrid stopped. Reason=%d", reason));
-   
-   ExecuteEmergencyClose(g_state);
-   ResetSLManager(g_state);
 }
 
 //+------------------------------------------------------------------+
@@ -129,49 +126,81 @@ void OnTick()
    bool prevSession = g_state.sessionAllowed;
    g_state.sessionAllowed = IsSessionAllowed();
 
-   // If cleanupInProgress but no positions remain → unstick immediately
-   // (positions may have been closed by safety stop or external event)
-   if(g_state.cleanupInProgress && CountPositions(g_state.magicNumber) == 0)
-     {
-      g_state.cleanupInProgress    = false;
-      g_state.cleanupStep          = 0;
-      g_state.slApplied            = false;
-      g_state.slWallArmed          = false;
-      g_state.slAllWinnersClosed   = false;
-      ResetSLManager(g_state);
-      LogCleanupComplete();
-      // Act on refill/rebuild immediately rather than waiting for next candle
-      if(InpEnableRefillInside || InpEnableRefillOutside)
-         CheckAndRefill(g_state);       // Style B/C: repair gap
-      else
-        {
-         g_state.gridPlaced = false;    // Style A: force full rebuild on next candle
-         LogDebug("[Coordinator] Unstuck: grid will rebuild on next candle.");
-        }
-     }
-        
    if(!prevSession && g_state.sessionAllowed)
       LogSessionChange(true, GetActiveSessionName());
    if(prevSession && !g_state.sessionAllowed)
       LogSessionChange(false, "Session ended");
-      
-   // (Unstick already handled above for the cleanupInProgress + no positions case)
-  
-   CalculateBasketProfit(g_state.magicNumber);
+
+   g_state.basketProfit = CalculateBasketProfit(g_state.magicNumber);
 
    // Closing always outranks opening/modifying — nothing else runs while
    // a cleanup sequence is in progress (it progresses via confirmations
    // in OnTradeTransaction, not per-tick).
    if(g_state.cleanupInProgress) return;
 
-   // Items 9/10: the ONLY place a grid is ever built.
-   CheckAndBuildGrid(g_state);
+   // ------------------------------------------------------------
+   // MODE_SHUTDOWN: repeatedly drive the emergency close every tick
+   // until the account is fully flat (handles the case where some
+   // closes failed even after their own internal retries — a single
+   // one-shot TriggerSafetyStop call isn't guaranteed to finish the
+   // job). Nothing else in this function runs while shutting down.
+   // ------------------------------------------------------------
+   if(g_state.mode == MODE_SHUTDOWN)
+     {
+      static datetime s_nextEscalateAt = 0;
 
-   // Brick 3: recenter (fresh grid only)
-   if(ProcessRecentering(g_state))
-      BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), g_state.lotMode, g_state);
+      bool flat = (CountPositions(g_state.magicNumber) == 0 &&
+                   CountOrders(g_state.magicNumber)    == 0);
 
-   // Brick 6: continuous SL arm/trail check
+      if(!flat)
+        {
+         // Silent retry — the alert/Telegram message already fired once,
+         // at the moment the mode switched to Shutdown (OnChartEvent).
+         // Retrying loudly every tick here would spam both every tick
+         // until flat, which defeats the point of an alert.
+         int c1,c2,c3,c4;
+         SilentCloseAll(g_state.magicNumber, c1, c2, c3, c4);
+
+         // Escalate (one more loud alert) if it's still stuck a minute
+         // later — a persistently failing close is worth knowing about,
+         // not just silently retried forever.
+         if(s_nextEscalateAt == 0)
+            s_nextEscalateAt = TimeCurrent() + 60;
+         else if(TimeCurrent() >= s_nextEscalateAt)
+           {
+            TriggerSafetyStop(g_state, "SHUTDOWN_STUCK — still not flat after 60s of retries");
+            s_nextEscalateAt = TimeCurrent() + 60; // escalate again every 60s while still stuck
+           }
+        }
+      else
+        {
+         s_nextEscalateAt = 0; // reset so a future Shutdown starts its own timer fresh
+         if(!g_state.shutdownFlat)
+           {
+            g_state.shutdownFlat = true;
+            LogDebug("[Coordinator] Shutdown complete — account is flat.");
+           }
+        }
+      return;
+     }
+
+   // ------------------------------------------------------------
+   // MODE_RUNNING only: grid can grow (build + recenter). MODE_PAUSED
+   // skips both — "maintenance" mode, no new builds/refills/shifts/
+   // recenters, but SL management below still runs in both modes.
+   // ------------------------------------------------------------
+   if(g_state.mode == MODE_RUNNING)
+     {
+      // Items 9/10: the ONLY place a grid is ever built.
+      CheckAndBuildGridOnNewCandle(g_state);
+
+      // Brick 3: recenter (fresh grid only)
+      if(ProcessRecentering(g_state))
+         BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), g_state.lotMode, g_state);
+     }
+
+   // Brick 6: continuous SL arm/trail check — runs in RUNNING and PAUSED
+   // alike (Paused still protects and manages the existing basket).
    if(g_state.cycleActive)
       ProcessSLManager(g_state);
 }
@@ -213,8 +242,9 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       bool done = ExecuteNextCloseStep(g_state);
       if(done)
         {
-         ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
-         if(g_state.refillNeeded)
+         ResetSLManager(); // coordinator's job — CleanupReset never reaches into SLManager
+         // Refill is opening logic — suppressed in Paused/Shutdown, same as build/shift/recenter.
+         if(g_state.refillNeeded && g_state.mode == MODE_RUNNING)
             CheckAndRefill(g_state); // inside refill takes priority over outside (handled inside FillOneSide)
         }
       return;
@@ -237,6 +267,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
          RecalcOnWinnerClose(g_state); // no-op unless the wall is armed
          if(g_state.slAllWinnersClosed)
            {
+            g_state.slAllWinnersClosed = false;
             StartCleanupSequence(g_state);
             return;
            }
@@ -245,11 +276,10 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       // SL disabled, or nothing armed, or an unexpected close (manual, etc.)
       // — Bug fix "Big A/B": there must always be a cleanup trigger.
       StartCleanupSequence(g_state);
-      bool done = ExecuteNextCloseStep(g_state);
       return;
      }
 
-   if(dealEntry != DEAL_ENTRY_IN) return; // if just A position opened
+   if(dealEntry != DEAL_ENTRY_IN) return; // ignore anything unexpected
 
    // ------------------------------------------------------------
    // NORMAL FLOW — a new position opened.
@@ -274,9 +304,14 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    // "new fill mid-epoch" gap — confirmed: re-snapshot every time).
    ReSnapshotIfArmed(g_state);
 
-   // Brick 1 / Brick 2 — each is a no-op internally if its toggle is off.
-   UpdateOppositeGrid(g_state);
-   ShiftGrid(g_state);
+   // Brick 1 / Brick 2 — opening logic, suppressed outside MODE_RUNNING
+   // (Paused/Shutdown: a pending order already on the book can still be
+   // hit and managed, but the grid must not grow further from that hit).
+   if(g_state.mode == MODE_RUNNING)
+     {
+      UpdateOppositeGrid(g_state);
+      ShiftGrid(g_state);
+     }
 
    // Brick 6 — check immediately after a fill too (not just OnTick),
    // so a newly-profitable basket doesn't wait for the next tick to arm.
@@ -307,18 +342,39 @@ void OnTimer()
 
 //+------------------------------------------------------------------+
 //| OnChartEvent                                                      |
-//| Extra concern #1 resolved: emergency close is now fully unified.  |
-//| It always closes everything and resets state; the next candle-   |
-//| open check (GridLifecycle) rebuilds automatically — no branching  |
-//| by brick combo needed here at all.                                 |
+//| Emergency close (manual button) is fully unified — it always      |
+//| closes everything and resets state; the next candle-open check    |
+//| rebuilds automatically — no branching by brick combo needed here. |
+//|                                                                    |
+//| The dashboard's MODE label (click to cycle Running -> Paused ->   |
+//| Shutdown -> Running) only mutates state.mode itself — it never    |
+//| calls an engine directly (Dashboard/ isn't allowed to any more    |
+//| than one engine is allowed to call another). This coordinator     |
+//| reacts to the mode change immediately below.                      |
 //+------------------------------------------------------------------+
 void OnChartEvent(const int id, const long &lparam,
                   const double &dparam, const string &sparam)
 {
    if(!InpShowDashboard) return;
-   if(!HandleChartEvent(id, lparam, dparam, sparam)) return;
 
-   LogDebug("EMERGENCY CLOSE triggered from dashboard.");
-   ExecuteEmergencyClose(g_state);
-   ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
+   ENUM_EA_MODE prevMode = g_state.mode;
+   if(!HandleChartEvent(id, lparam, dparam, sparam, g_state)) return;
+
+   if(g_emergencyPressed)
+     {
+      g_emergencyPressed = false;
+      LogDebug("EMERGENCY CLOSE triggered from dashboard.");
+      ExecuteEmergencyClose(g_state);
+      ResetSLManager(); // coordinator's job — CleanupReset never reaches into SLManager
+      return;
+     }
+
+   // Mode just switched to Shutdown — kick off the close immediately
+   // rather than waiting for the next OnTick's retry loop to notice.
+   if(prevMode != MODE_SHUTDOWN && g_state.mode == MODE_SHUTDOWN)
+     {
+      LogDebug("MODE -> SHUTDOWN: closing everything now.");
+      ExecuteEmergencyClose(g_state);
+      ResetSLManager();
+     }
 }

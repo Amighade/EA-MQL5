@@ -5,6 +5,7 @@
 //+------------------------------------------------------------------+
 #ifndef CHART_PANEL_MQH
 #define CHART_PANEL_MQH
+#define HEADER_H 36
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -122,6 +123,7 @@ void InitDashboard()
    HG_SetRect(PANEL_PREFIX "BG", px, py, PANEL_W, PANEL_H, C'20,20,20', clrGray);
    HG_SetRect(DRAG_NAME,         px, py, PANEL_W, 16,      C'40,40,80', clrSteelBlue);
    HG_CreateLabel(PANEL_PREFIX "TITLE", lx, py+2, "=== HedgeGrid EA  [drag] ===", clrWhite, 9);
+   HG_CreateLabel(PANEL_PREFIX "MODE", lx, py+18, "MODE: RUNNING", clrLime, 9);
 
    // Static row labels — match UpdateDashboard order
    string labels[] = {
@@ -132,18 +134,18 @@ void InitDashboard()
       "basketSellProfit :", "slApplied :", "slLevel :", "slWinnerSide :",
       "slWallArmed :", "slAllWinnersClosed :", "refillNeeded :", "cleanupType :",
       "cleanupInProgress :", "cleanupStep :", "marginWarning :", "sessionAllowed :",
-      "gapFaultDetected :", "Bricks :"
+      "gapFaultDetected :", "Bricks :", "Mode :"
    };
    color lblColors[] = {
       clrYellow,clrWhite,clrYellow,clrWhite,clrYellow,clrWhite,clrYellow,clrWhite,
       clrYellow,clrWhite,clrYellow,clrWhite,clrYellow,clrWhite,clrYellow,clrWhite,
       clrYellow,clrWhite,clrYellow,clrWhite,clrYellow,clrWhite,clrYellow,clrWhite,
-      clrYellow,clrWhite,clrYellow,clrWhite,clrYellow,clrSilver
+      clrYellow,clrWhite,clrYellow,clrWhite,clrYellow,clrSilver,clrWhite
    };
 
    for(int i=0; i<ROWS; i++)
      {
-      int ry = py + 16 + i*ROW_H + 2;
+      int ry = py + HEADER_H + i*ROW_H + 2;
       HG_CreateLabel(PANEL_PREFIX+"L"+IntegerToString(i+1), lx, ry, labels[i], lblColors[i]);
      }
 
@@ -173,8 +175,9 @@ void UpdateDashboard(const GridState &state)
 
    int vx = g_panelX + 300;
    int py = g_panelY;
+   int px=g_panelX, lx=px+5;
 
-   #define RY(i) (py + 16 + (i)*ROW_H + 2)
+   #define RY(i) (py + HEADER_H + (i)*ROW_H + 2)
 
    HG_UpdateVal(PANEL_PREFIX "V1",  state.cycleActive?"YES":"NO",                       state.cycleActive?clrOrange:clrMagenta,           vx, RY(0));
    HG_UpdateVal(PANEL_PREFIX "V2",  state.gridPlaced?"YES":"NO",                        state.gridPlaced?clrOrange:clrMagenta,             vx, RY(1));
@@ -212,6 +215,29 @@ void UpdateDashboard(const GridState &state)
       InpEnableRefillOutside?"+":"-");
    HG_UpdateVal(PANEL_PREFIX "V30", bricks, clrYellow, vx, RY(29));
 
+   // Mode row — Shutdown shows whether the close-out is still in progress
+   // or has finished (state.shutdownFlat), set by the coordinator's
+   // per-tick Shutdown retry loop (see HedgeGrid.mq5).
+   string modeText = "UNKNOWN";
+   color  modeColor = clrSilver;
+   if(state.mode == MODE_RUNNING)
+     {
+      modeText  = "RUNNING";
+      modeColor = clrLime;
+     }
+   else if(state.mode == MODE_PAUSED)
+     {
+      modeText  = "PAUSED";
+      modeColor = clrOrange;
+     }
+   else if(state.mode == MODE_SHUTDOWN)
+     {
+      modeText  = state.shutdownFlat ? "SHUTDOWN (FLAT)" : "SHUTDOWN (CLOSING...)";
+      modeColor = state.shutdownFlat ? clrGray : clrRed;
+     }
+
+   HG_UpdateVal(PANEL_PREFIX "MODE", "MODE: " + modeText, modeColor, lx, py + 18);
+
    #undef RY
    ChartRedraw();
 }
@@ -227,12 +253,39 @@ void DeinitDashboard()
 }
 
 //+------------------------------------------------------------------+
-//| HandleChartEvent — drag + emergency button                       |
+//| HandleChartEvent — drag + emergency button + mode click-cycle    |
+//| NOTE: this only mutates state.mode / sets g_emergencyPressed.    |
+//| It never calls ExecuteEmergencyClose or any Engine function      |
+//| itself — the coordinator (HedgeGrid.mq5) is the only file        |
+//| allowed to call engines, so it reacts to these flags/changes     |
+//| after this function returns (see OnChartEvent and the Shutdown   |
+//| retry loop in OnTick).                                            |
 //+------------------------------------------------------------------+
-bool HandleChartEvent(const int id, const long &lparam,
-                      const double &dparam, const string &sparam)
+bool HandleChartEvent(const int id,
+                      const long &lparam,
+                      const double &dparam,
+                      const string &sparam,
+                      GridState &state)
 {
    if(!InpShowDashboard) return false;
+
+   if(id == CHARTEVENT_OBJECT_CLICK && sparam == PANEL_PREFIX "MODE")
+      {
+      if(state.mode == MODE_RUNNING)
+         state.mode = MODE_PAUSED;
+      else if(state.mode == MODE_PAUSED)
+        {
+         state.mode         = MODE_SHUTDOWN;
+         state.shutdownFlat = false; // coordinator drives the close-out from here
+        }
+      else
+        {
+         state.mode         = MODE_RUNNING;
+         state.shutdownFlat = false;
+        }
+      ChartRedraw();
+      return true;
+      }
 
    // Emergency button click
    if(id == CHARTEVENT_OBJECT_CLICK && sparam == BTN_NAME)
