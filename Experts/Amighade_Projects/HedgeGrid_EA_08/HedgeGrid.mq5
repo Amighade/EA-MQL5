@@ -233,23 +233,6 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       dealEntry == DEAL_ENTRY_INOUT ||
       dealEntry == DEAL_ENTRY_OUT_BY)
      {
-      if(InpEnableSL)
-        {
-         RecalcOnWinnerClose(g_state); // no-op unless the wall is armed
-         if(g_state.slAllWinnersClosed)
-           {
-            StartCleanupSequence(g_state);
-            bool done = ExecuteNextCloseStep(g_state);
-            if(done)
-              {
-               ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
-               if(g_state.refillNeeded)
-                  CheckAndRefill(g_state); // inside refill takes priority over outside (handled inside FillOneSide)
-              }
-            return;
-           }
-         if(g_state.slWallArmed) return; // still waiting on the rest of the armed wall
-        }
       // SL disabled, or nothing armed, or an unexpected close (manual, etc.)
       // — Bug fix "Big A/B": there must always be a cleanup trigger.
       StartCleanupSequence(g_state);
