@@ -240,6 +240,12 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
            {
             StartCleanupSequence(g_state);
             bool done = ExecuteNextCloseStep(g_state);
+            if(done)
+              {
+               ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
+               if(g_state.refillNeeded)
+                  CheckAndRefill(g_state); // inside refill takes priority over outside (handled inside FillOneSide)
+              }
             return;
            }
          if(g_state.slWallArmed) return; // still waiting on the rest of the armed wall
