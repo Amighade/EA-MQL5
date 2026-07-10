@@ -319,7 +319,14 @@ void UpdateDashboard(const GridState &state)
                state.slWinnerSide == 0 ? clrLime : clrMagenta);
    ObjectSetInteger(0, PANEL_PREFIX "V20", OBJPROP_XDISTANCE, valueX);
    ObjectSetInteger(0, PANEL_PREFIX "V20", OBJPROP_YDISTANCE, PANEL_Y + 400);
-   
+
+   UpdateLabel(PANEL_PREFIX "V20",
+               state.slWinnerSide == 0 ?"BUY":
+               state.slWinnerSide == 1 ?"SELL":"---",
+               state.slWinnerSide == 0 ? clrLime :
+               state.slWinnerSide == 1 ? clrMagenta : clrSilver
+               );
+                  
    // slWallArmed
    UpdateLabel(PANEL_PREFIX "V21",
                state.slWallArmed ? "YES" : "NO",
