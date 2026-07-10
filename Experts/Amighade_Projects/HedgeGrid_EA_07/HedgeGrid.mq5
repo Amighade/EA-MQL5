@@ -116,9 +116,6 @@ void OnDeinit(const int reason)
    DeinitHistoryLogger();
    EventKillTimer();
    LogDebug(StringFormat("HedgeGrid stopped. Reason=%d", reason));
-   
-   ExecuteEmergencyClose(g_state);
-   ResetSLManager();
 }
 
 //+------------------------------------------------------------------+
@@ -249,7 +246,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       return;
      }
 
-   if(dealEntry != DEAL_ENTRY_IN) return; // if just A position opened
+   if(dealEntry != DEAL_ENTRY_IN) return; // ignore anything unexpected
 
    // ------------------------------------------------------------
    // NORMAL FLOW — a new position opened.

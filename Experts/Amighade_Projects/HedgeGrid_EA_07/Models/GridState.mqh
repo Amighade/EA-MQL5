@@ -3,13 +3,6 @@
 
 #include "../Inputs.mqh"
 
-enum EA_MODE
-{
-   MODE_RUNNING = 0,
-   MODE_PAUSED,
-   MODE_SHUTDOWN
-};
-
 struct GridState
   {
    //--- Cycle state
@@ -67,10 +60,6 @@ struct GridState
 
    //--- Magic number
    int            magicNumber;
-   
-   //--- Ea Mode
-   EA_MODE        mode;
-   
   };
 
 void ResetGridState(GridState &state)
@@ -104,7 +93,6 @@ void ResetGridState(GridState &state)
    state.marginWarning      = false;
    state.sessionAllowed     = false;
    state.gapFaultDetected   = false;
-   state.mode               = MODE_RUNNING;
    // lastBarGridCheck / lastBarRecenter NOT reset — candle trackers persist across cycles
    // magicNumber NOT reset — set once in OnInit
   }

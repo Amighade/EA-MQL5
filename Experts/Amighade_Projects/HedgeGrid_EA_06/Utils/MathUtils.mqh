@@ -157,35 +157,38 @@ double GetLastEntryPrice(ENUM_POSITION_TYPE direction, int magicNumber)
 //+------------------------------------------------------------------+
 //| Calculate total basket profit for all EA positions               |
 //+------------------------------------------------------------------+
-void CalculateBasketProfits(GridState &state)
+double CalculateBasketProfit(int magicNumber)
 {
-   double totalProfit = 0.0;
-   double buyProfit   = 0.0;
-   double sellProfit  = 0.0;
-
+   double total = 0.0;
    for(int i = 0; i < PositionsTotal(); i++)
-   {
+     {
       ulong ticket = PositionGetTicket(i);
       if(!PositionSelectByTicket(ticket)) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-      if(PositionGetInteger(POSITION_MAGIC) != state.magicNumber) continue;
-
-      double profit = PositionGetDouble(POSITION_PROFIT);
-      totalProfit += profit;
-
-      ENUM_POSITION_TYPE type =
-         (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-
-      if(type == POSITION_TYPE_BUY)
-         buyProfit += profit;
-      else if(type == POSITION_TYPE_SELL)
-         sellProfit += profit;
-   }
-
-   state.basketProfit     = totalProfit;
-   state.basketBuyProfit  = buyProfit;
-   state.basketSellProfit = sellProfit;
+      if(PositionGetInteger(POSITION_MAGIC) != magicNumber) continue;
+      total += PositionGetDouble(POSITION_PROFIT);
+     }
+   return total;
 }
+
+//+------------------------------------------------------------------+
+//| Calculate basket profit for one direction only                   |
+//+------------------------------------------------------------------+
+double CalculateDirectionProfit(ENUM_POSITION_TYPE direction, int magicNumber)
+{
+   double total = 0.0;
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != magicNumber) continue;
+      if((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != direction) continue;
+      total += PositionGetDouble(POSITION_PROFIT);
+     }
+   return total;
+}
+
 //+------------------------------------------------------------------+
 //| Auto-generate magic number from symbol + timeframe               |
 //| Matches logic from CandleMultiOrder BuildMagicNumber()           |

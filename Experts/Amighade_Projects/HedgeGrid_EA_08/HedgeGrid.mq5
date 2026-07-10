@@ -157,7 +157,7 @@ void OnTick()
       
    // (Unstick already handled above for the cleanupInProgress + no positions case)
   
-   CalculateBasketProfit(g_state.magicNumber);
+   CalculateBasketProfits(g_state);
 
    // Closing always outranks opening/modifying — nothing else runs while
    // a cleanup sequence is in progress (it progresses via confirmations
