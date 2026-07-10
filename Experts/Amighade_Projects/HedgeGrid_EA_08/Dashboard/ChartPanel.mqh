@@ -195,7 +195,15 @@ void UpdateDashboard(const GridState &state)
    HG_UpdateVal(PANEL_PREFIX "V17", DoubleToString(state.basketSellProfit,2),           clrAqua,                                           vx, RY(16));
    HG_UpdateVal(PANEL_PREFIX "V18", state.slApplied?"YES":"NO",                         state.slApplied?clrOrange:clrMagenta,              vx, RY(17));
    HG_UpdateVal(PANEL_PREFIX "V19", DoubleToString(state.slLevel,2),                    clrAqua,                                           vx, RY(18));
-   HG_UpdateVal(PANEL_PREFIX "V20", state.slWinnerSide==0?"BUY":"SELL",                 state.slWinnerSide==0?clrLime:clrMagenta,          vx, RY(19));
+   //HG_UpdateVal(PANEL_PREFIX "V20", state.slWinnerSide==0?"BUY":"SELL",                 state.slWinnerSide==0?clrLime:clrMagenta,          vx, RY(19));
+   HG_UpdateVal(PANEL_PREFIX "V20",
+             state.slWinnerSide == 0 ? "BUY" :
+             state.slWinnerSide == 1 ? "SELL" :
+                                       "---",
+             state.slWinnerSide == 0 ? clrLime :
+             state.slWinnerSide == 1 ? clrMagenta :
+                                       clrSilver,
+             vx, RY(19));
    HG_UpdateVal(PANEL_PREFIX "V21", state.slWallArmed?"YES":"NO",                       state.slWallArmed?clrOrange:clrMagenta,            vx, RY(20));
    HG_UpdateVal(PANEL_PREFIX "V22", state.slAllWinnersClosed?"YES":"NO",                state.slAllWinnersClosed?clrOrange:clrMagenta,     vx, RY(21));
    HG_UpdateVal(PANEL_PREFIX "V23", state.refillNeeded?"YES":"NO",                      state.refillNeeded?clrOrange:clrMagenta,           vx, RY(22));
@@ -206,6 +214,13 @@ void UpdateDashboard(const GridState &state)
    HG_UpdateVal(PANEL_PREFIX "V28", state.sessionAllowed?"YES":"NO",                    state.sessionAllowed?clrOrange:clrSilver,          vx, RY(27));
    HG_UpdateVal(PANEL_PREFIX "V29", state.gapFaultDetected?"YES":"NO",                  state.gapFaultDetected?clrOrange:clrSilver,        vx, RY(28));
 
+   UpdateLabel(PANEL_PREFIX "V20",
+               state.slWinnerSide == 0 ?"BUY":
+               state.slWinnerSide == 1 ?"SELL":"---",
+               state.slWinnerSide == 0 ? clrLime :
+               state.slWinnerSide == 1 ? clrMagenta : clrSilver
+               );
+               
    string bricks = StringFormat("L%s S%s R%s I%s O%s",
       InpEnableLotIncrease  ?"+":"-", InpEnableShifting     ?"+":"-",
       InpEnableRecentering  ?"+":"-", InpEnableRefillInside ?"+":"-",
