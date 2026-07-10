@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
 //| HedgeGrid.mq5                                                     |
-//| Main EA coordinator — "brick" architecture (v4.00)                |
+//| Main EA coordinator — "brick" architecture (v8.00)                |
 //| Rules:                                                           |
 //|   - Every behavior is an independent, toggleable brick            |
 //|     (see Inputs.mqh). No more hardcoded Style A/B/C engines.      |
@@ -117,8 +117,9 @@ void OnDeinit(const int reason)
    EventKillTimer();
    LogDebug(StringFormat("HedgeGrid stopped. Reason=%d", reason));
    
-   ExecuteEmergencyClose(g_state);
-   ResetSLManager(g_state);
+   if(reason == REASON_REMOVE || reason == REASON_CLOSE || reason == REASON_CHARTCLOSE)
+   { ExecuteEmergencyClose(g_state); ResetSLManager(g_state); }
+   
 }
 
 //+------------------------------------------------------------------+
@@ -238,6 +239,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
          if(g_state.slAllWinnersClosed)
            {
             StartCleanupSequence(g_state);
+            bool done = ExecuteNextCloseStep(g_state);
             return;
            }
          if(g_state.slWallArmed) return; // still waiting on the rest of the armed wall

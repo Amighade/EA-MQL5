@@ -101,7 +101,7 @@ bool ExecuteNextCloseStep(GridState &state)
       state.slApplied         = false;
       state.slWallArmed       = false;
       state.slAllWinnersClosed= false;
-      // NOTE: coordinator calls ResetSLManager() right after this returns true.
+      // NOTE: coordinator calls ResetSLManager() right after this returns true.refillNeeded = true
 
       if(state.cleanupType == CLEANUP_CLOSE_ALL)
         {

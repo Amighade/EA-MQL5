@@ -219,7 +219,7 @@ bool AllWinnersClosed()
 void ResetSLManager(GridState &state)
 {
    ArrayResize(g_ArmedWinnerTickets, 0);
-   state.slAllWinnersClosed = true;
+   state.slAllWinnersClosed = false;
    state.slApplied = false;
    state.slLevel = 0;
    state.slWallArmed = false;
@@ -300,7 +300,8 @@ void TrailWall_orgn(GridState &state)
 
 void TrailWall(GridState &state)
 {
-   ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
+   //ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
+   ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
    double slLevel = CalculateSLCandidate(winnerSide, state.magicNumber);
    
    Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel);//AGH
@@ -313,6 +314,22 @@ void TrailWall(GridState &state)
    int applied = ApplySLToWinners(slLevel, state);
    if(applied < 0) return; // safety stop already triggered
    if(applied == 0) return;
+   
+   ulong t = g_ArmedWinnerTickets[0];
+   if(!PositionSelectByTicket(t))
+   {
+   ResetSLManager(state);
+   } 
+   else
+   {
+   slLevel = PositionGetDouble(POSITION_SL);
+   
+   state.slWallArmed  = true;
+   state.slApplied    = true;
+   state.slLevel      = slLevel;
+   state.slWinnerSide = (int)winnerSide;
+   LogSLTriggered("SL_ARMED", slLevel);
+   }
 }
 //+------------------------------------------------------------------+
 //| Called by coordinator when an armed winner closes (DEAL_ENTRY_OUT|

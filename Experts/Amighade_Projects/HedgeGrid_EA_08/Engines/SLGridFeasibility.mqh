@@ -153,7 +153,7 @@ double SL_FindCandidate(SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide, 
       return 0;
    }*/
    {
-      for(int n = InpSLNBack; n <= 1; n--)
+      for(int n = InpSLNBack; n >= 1; n--)
       {
          double candidate = SL_GetGridLevel(anchor, n, winnerSide);
    
