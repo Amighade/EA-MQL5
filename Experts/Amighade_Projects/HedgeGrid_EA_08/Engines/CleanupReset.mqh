@@ -77,19 +77,6 @@ bool ExecuteNextCloseStep(GridState &state)
 {
    if(!state.cleanupInProgress) return true;
 
-   // If no positions at all remain → cleanup already done externally
-   if(CountPositions(state.magicNumber) == 0)
-     {
-      state.cleanupInProgress = false;
-      state.cleanupStep = 0;
-      state.slApplied = false;
-      state.slWallArmed = false;
-      state.slAllWinnersClosed = false;
-      state.refillNeeded = true;
-      LogCleanupComplete();
-      return true;
-     }
-
    ulong sequence[];
    BuildZigzagPositionOrder(state.magicNumber, sequence);
 
