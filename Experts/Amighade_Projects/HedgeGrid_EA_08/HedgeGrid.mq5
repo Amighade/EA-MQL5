@@ -130,25 +130,35 @@ void OnTick()
    bool prevSession = g_state.sessionAllowed;
    g_state.sessionAllowed = IsSessionAllowed();
 
-   // If cleanupInProgress but no positions remain → unstick immediately
-   // (positions may have been closed by safety stop or external event)
+   // ------------------------------------------------------------
+   // Reconciliation: recognize known-stuck shapes and delegate to
+   // the one real owner for each — never hand-write the fields here.
+   // ------------------------------------------------------------
+
+   // Cleanup never got the transaction that should have kicked it off.
    if(g_state.cleanupInProgress && CountPositions(g_state.magicNumber) == 0)
      {
-      g_state.cleanupInProgress    = false;
-      g_state.cleanupStep          = 0;
-      g_state.slApplied            = false;
-      g_state.slWallArmed          = false;
-      g_state.slAllWinnersClosed   = false;
-      ResetSLManager(g_state);
-      LogCleanupComplete();
-      // Act on refill/rebuild immediately rather than waiting for next candle
-      if(InpEnableRefillInside || InpEnableRefillOutside)
-         CheckAndRefill(g_state);       // Style B/C: repair gap
-      else
+      bool done = ExecuteNextCloseStep(g_state);
+      if(done)
         {
-         g_state.gridPlaced = false;    // Style A: force full rebuild on next candle
-         LogDebug("[Coordinator] Unstuck: grid will rebuild on next candle.");
+         ResetSLManager(g_state);
+         if(g_state.refillNeeded)
+            CheckAndRefill(g_state);
         }
+     }
+   
+   // Phantom grid: state believes a grid exists, broker has nothing.
+   if(g_state.gridPlaced && !g_state.cleanupInProgress &&
+      CountPositions(g_state.magicNumber) == 0 &&
+      CountOrders(g_state.magicNumber) == 0)
+     {
+      ResetGridBuilder(g_state);
+     }
+   
+   // Orphaned wall: armed but nothing left for it to watch.
+   if(g_state.slWallArmed && !g_state.cycleActive)
+     {
+      ResetSLManager(g_state);
      }
         
    if(!prevSession && g_state.sessionAllowed)
@@ -181,7 +191,7 @@ void OnTick()
 //| OnTradeTransaction                                                |
 //| Bug fixes applied:                                                 |
 //|  #1 SL-hit detection delay -> handled synchronously here, not     |
-//|     deferred to OnTick (RecalcOnWinnerClose runs inline below).   |
+//|     deferred to OnTick.   |
 //|  #2 Normal fill vs SL close misidentification -> uses              |
 //|     deal history (deal_entry via HistoryDealGetInteger) instead of deal_type alone.       |
 //|  #3 isDeal filter -> only TRADE_TRANSACTION_DEAL_ADD now.          |
@@ -237,6 +247,12 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       // — Bug fix "Big A/B": there must always be a cleanup trigger.
       StartCleanupSequence(g_state);
       bool done = ExecuteNextCloseStep(g_state);
+      if(done)
+        {
+         ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
+         if(g_state.refillNeeded)
+            CheckAndRefill(g_state); // inside refill takes priority over outside (handled inside FillOneSide)
+        }
       return;
      }
 
