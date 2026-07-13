@@ -22,6 +22,7 @@ enum ENUM_INITIAL_SIZING
   {
    SIZING_FIXED  = 0,  // Fixed lot for every level (InpFixedLot)
    SIZING_LADDER = 1,  // Increasing ladder per level (InpInitialLotStep, capped at InpInitialLotCap)
+   SIZING_EXP = 2,  // Increasing ladder per level exponentially (InpInitialLotStep, capped at InpInitialLotCap)
   };
 
 //--- Brick 1: lot increase on opposite-side hit

@@ -266,14 +266,14 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    // not re-read from a possibly-gone order after the fact).
    double currentPrice  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double expectedPrice = 0.0;
-   ulong  faultTicket    = CheckGapFault(currentPrice, g_state.magicNumber, expectedPrice);
+   /*ulong  faultTicket    = CheckGapFault(currentPrice, g_state.magicNumber, expectedPrice);
    if(faultTicket != 0)
      {
       g_state.gapFaultDetected = true;
       LogGapFault(expectedPrice, currentPrice, faultTicket);
       TriggerSafetyStop(g_state, StringFormat("GAP_FAULT ticket=%I64u expected=%.5f", faultTicket, expectedPrice));
       return;
-     }
+     }*/
 
    ProcessOrderFill(positionTicket, g_state);
 

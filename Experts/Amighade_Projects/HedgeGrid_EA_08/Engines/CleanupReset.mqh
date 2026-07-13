@@ -85,7 +85,6 @@ bool ExecuteNextCloseStep(GridState &state)
       // Cleanup complete
       state.cleanupInProgress = false;
       state.cleanupStep       = 0;
-      // NOTE: coordinator calls ResetSLManager() right after this returns true.refillNeeded = true
 
       if(state.cleanupType == CLEANUP_CLOSE_ALL)
         {

@@ -32,11 +32,25 @@ double GetLot_Ladder(int level, ENUM_LOT_MODE lotMode)
    int maxLevel = GetMaxLevels(lotMode);
    level = MathMin(level, maxLevel); // Clamp to max level
 
-   double lot = InpInitialLotStep * level;
+   //double lot = InpInitialLotStep * level;
+   double lot = InpFixedLot + (InpInitialLotStep * (level - 1));
    lot = MathMin(lot, InpInitialLotCap); // Cap at maximum
    return AlignVolume(_Symbol, lot);
   }
+  
+//+------------------------------------------------------------------+
+//| Ladder exponential lot sizing                                                 |
+//| level: 1-based grid level (1 = nearest to price)                 |
+//+------------------------------------------------------------------+
+double GetLot_EXP(int level, ENUM_LOT_MODE lotMode)
+  {
+   int maxLevel = GetMaxLevels(lotMode);
+   level = MathMin(level, maxLevel); // Clamp to max level
 
+   double lot = InpFixedLot + InpInitialLotStep * MathPow(level - 1, 1.5);
+   lot = MathMin(lot, InpInitialLotCap); // Cap at maximum
+   return AlignVolume(_Symbol, lot);
+  }
 //+------------------------------------------------------------------+
 //| Fixed lot sizing — all levels use the same lot                   |
 //+------------------------------------------------------------------+
@@ -55,6 +69,7 @@ double GetLot(int level, ENUM_LOT_MODE lotMode)
      {
       case SIZING_LADDER: return GetLot_Ladder(level, lotMode);
       case SIZING_FIXED:  return GetLot_Fixed(level, lotMode);
+      case SIZING_EXP:  return GetLot_EXP(level, lotMode);
       default:             return GetLot_Fixed(level, lotMode);
      }
   }
