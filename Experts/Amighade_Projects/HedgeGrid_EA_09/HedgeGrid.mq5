@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
 //| HedgeGrid.mq5                                                     |
-//| Main EA coordinator — "brick" architecture (v8.00)                |
+//| Main EA coordinator — "brick" architecture (v9.00)                |
 //| Rules:                                                           |
 //|   - Every behavior is an independent, toggleable brick            |
 //|     (see Inputs.mqh). No more hardcoded Style A/B/C engines.      |
@@ -16,7 +16,7 @@
 //|     never immediately on session start.                            |
 //+------------------------------------------------------------------+
 #property copyright "HedgeGrid EA"
-#property version   "4.00"
+#property version   "9.00"
 #property strict
 
 #include "Inputs.mqh"
@@ -175,14 +175,14 @@ void OnTick()
    // in OnTradeTransaction, not per-tick).
    if(g_state.cleanupInProgress) return;
 
-   // Items 9/10: the ONLY place a grid is ever built.
+   // the ONLY place a grid is ever built.
    CheckAndBuildGrid(g_state);
 
-   // Brick 3: recenter (fresh grid only)
+   // recenter (fresh grid only)
    if(ProcessRecentering(g_state))
       BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), g_state.lotMode, g_state);
 
-   // Brick 6: continuous SL arm/trail check
+   // continuous SL arm/trail check
    if(g_state.cycleActive)
       ProcessSLManager(g_state);
 }
@@ -284,7 +284,10 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    // Brick 1 / Brick 2 — each is a no-op internally if its toggle is off.
    UpdateOppositeGrid(g_state);
    ShiftGrid(g_state);
-
+   
+   if(InpEnableRefillInside && InpRefillInsideStyle == REFILL_FOLLOW_PRICE)
+      RefillFollowPrice(g_state);
+      
    // Brick 6 — check immediately after a fill too (not just OnTick),
    // so a newly-profitable basket doesn't wait for the next tick to arm.
    ProcessSLManager(g_state);

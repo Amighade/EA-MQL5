@@ -60,6 +60,8 @@ enum ENUM_LOT_MODE
    LOT_FULL = 0,  // Full ladder/count
    LOT_HALF = 1,  // Half ladder/count (low margin fallback)
   };
+
+enum ENUM_REFILL_STYLE { REFILL_THRESHOLD = 0, REFILL_FOLLOW_PRICE = 1 };
   
 double InpCommissionPerLot = 0.0;
 //+------------------------------------------------------------------+
@@ -95,7 +97,7 @@ input double InpThresholdFactor    = 3.0;      // Recenter zone divisor (gap / f
 
 //--- BRICK 4: Refill inside gap -----------------------------------------
 input bool   InpEnableRefillInside  = false;   // Refill inside the gap (between nearest BUY/SELL) when empty?
-                                                // NOTE: keep InpEnableShifting = false when this is on.
+input ENUM_REFILL_STYLE InpRefillStyle = REFILL_THRESHOLD;                                                // NOTE: keep InpEnableShifting = false when this is on.
 
 //--- BRICK 5: Refill outside range --------------------------------------
 input bool   InpEnableRefillOutside = false;   // Refill outside levels when count drops below InpMinGridLevels?
