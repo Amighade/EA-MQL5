@@ -285,7 +285,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    UpdateOppositeGrid(g_state);
    ShiftGrid(g_state);
    
-   if(InpEnableRefillInside && InpRefillInsideStyle == REFILL_FOLLOW_PRICE)
+   if(InpEnableRefillInside && InpRefillStyle == REFILL_FOLLOW_PRICE)
       RefillFollowPrice(g_state);
       
    // Brick 6 — check immediately after a fill too (not just OnTick),
