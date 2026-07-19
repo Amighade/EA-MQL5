@@ -240,151 +240,100 @@ void RefillFollowPrice(GridState &state)
 {
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   int    currentSell   = CountOrderType(ORDER_TYPE_SELL_STOP, state.magicNumber);
-   int    currentBuy   = CountOrderType(ORDER_TYPE_BUY_STOP, state.magicNumber);
-   if(currentBuy+currentSell ==0) return;
-   /*
-   // ---- INSIDE FILL (BRICK 4) ----
+   int    currentSell = CountOrderType(ORDER_TYPE_SELL_STOP, state.magicNumber);
+   int    currentBuy  = CountOrderType(ORDER_TYPE_BUY_STOP,  state.magicNumber);
+   if(currentBuy + currentSell == 0) return;
+
+   // ---- INSIDE FILL — rebuild a side from scratch if it's completely empty (BRICK 4) ----
    if(InpEnableRefillInside)
-     {
-      // ---- Walk DOWN from bid: SELL side ----
-      for(int step = 1; step <= InpMaxGridLevels; step++)
+      {
+      double nearestSell = GetNearestSellStop(state.magicNumber);
+      double nearestBuy  = GetNearestBuyStop(state.magicNumber);
+
+      if(nearestSell == 0)
         {
-         double level = AlignToTick(_Symbol, bid - InpGridSpacing * step);
-         bool exists = false;
-         for(int i = 0; i < OrdersTotal() && !exists; i++)
-           {
-            ulong t = OrderGetTicket(i);
-            if(!OrderSelect(t)) continue;
-            if(OrderGetString(ORDER_SYMBOL)  != _Symbol)           continue;
-            if(OrderGetInteger(ORDER_MAGIC)  != state.magicNumber) continue;
-            if((ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE) != ORDER_TYPE_SELL_STOP) continue;
-            if(NearlyEqualPrice(OrderGetDouble(ORDER_PRICE_OPEN), level)) exists = true;
-           }
-         if(exists) break;
-         PlaceSellStop(level, InpFixedLot, state.magicNumber);
-        }
-
-      // ---- Walk UP from ask: BUY side ----
-      for(int step = 1; step <= InpMaxGridLevels; step++)
-        {
-         double level = AlignToTick(_Symbol, ask + InpGridSpacing * step);
-         bool exists = false;
-         for(int i = 0; i < OrdersTotal() && !exists; i++)
-           {
-            ulong t = OrderGetTicket(i);
-            if(!OrderSelect(t)) continue;
-            if(OrderGetString(ORDER_SYMBOL)  != _Symbol)           continue;
-            if(OrderGetInteger(ORDER_MAGIC)  != state.magicNumber) continue;
-            if((ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE) != ORDER_TYPE_BUY_STOP) continue;
-            if(NearlyEqualPrice(OrderGetDouble(ORDER_PRICE_OPEN), level)) exists = true;
-           }
-         if(exists) break;
-         PlaceBuyStop(level, InpFixedLot, state.magicNumber);
-        }
-     }*/
-
-
-
-   // ---- INSIDE OUTSIDE FILL IF ONE SIDE IS EMPTY (BRICK 4) ----
-   if(InpEnableRefillInside)
-     {
-      int    currentSell   = CountOrderType(ORDER_TYPE_SELL_STOP, state.magicNumber);
-      int    currentBuy   = CountOrderType(ORDER_TYPE_BUY_STOP, state.magicNumber);
-      double nearestSell= GetNearestSellStop(state.magicNumber);
-      double nearestBuy = GetNearestBuyStop(state.magicNumber);
-
-      if (nearestSell == 0)
-        {
-         // Fill BUY side: walk down from nearestBuy toward price, keeping existing grid spacing
+         // Backfill BUY side down to the near-price boundary, keeping existing spacing
          for(double level = nearestBuy - InpGridSpacing; level > (ask + InpInitialGap/2); level -= InpGridSpacing)
            {
             double lvl = AlignToTick(_Symbol, level);
             PlaceBuyStop(lvl, InpFixedLot, state.magicNumber);
            }
-      
-         // Fill SELL side: first level uses InpInitialGap from price, rest use InpGridSpacing
+
+         // Rebuild SELL side from scratch — first level at InpInitialGap from bid, rest at InpGridSpacing
          double sellLevel = 0.0;
          for(int step = 1; step <= InpMaxGridLevels; step++)
            {
-            sellLevel = (step == 1) ? (ask - InpInitialGap) : (sellLevel - InpGridSpacing);
+            sellLevel = (step == 1) ? (bid - InpInitialGap) : (sellLevel - InpGridSpacing);
             double lvl = AlignToTick(_Symbol, sellLevel);
             PlaceSellStop(lvl, InpFixedLot, state.magicNumber);
            }
          return;
         }
-      
-      if (nearestBuy == 0)
+
+      if(nearestBuy == 0)
         {
-         // Fill SELL side: walk up from nearestSell toward price, keeping existing grid spacing
+         // Backfill SELL side up to the near-price boundary, keeping existing spacing
          for(double level = nearestSell + InpGridSpacing; level < (bid - InpInitialGap/2); level += InpGridSpacing)
            {
             double lvl = AlignToTick(_Symbol, level);
             PlaceSellStop(lvl, InpFixedLot, state.magicNumber);
            }
-      
-         // Fill BUY side: first level uses InpInitialGap from price, rest use InpGridSpacing
+
+         // Rebuild BUY side from scratch — first level at InpInitialGap from ask, rest at InpGridSpacing
          double buyLevel = 0.0;
          for(int step = 1; step <= InpMaxGridLevels; step++)
            {
-            buyLevel = (step == 1) ? (bid + InpInitialGap) : (buyLevel + InpGridSpacing);
+            buyLevel = (step == 1) ? (ask + InpInitialGap) : (buyLevel + InpGridSpacing);
             double lvl = AlignToTick(_Symbol, buyLevel);
             PlaceBuyStop(lvl, InpFixedLot, state.magicNumber);
            }
          return;
         }
-        
-      // ---- SELL side ----
-      
-      if((bid - nearestSell) > InpMinGridLevels)
-        {
-         int needed = InpMaxGridLevels - currentSell;
-         if(nearestSell == 0) (nearestSell = nearestBuy -  bid - InpGridSpacing * InpMaxGridLevels);
-         needed = MathMax(needed,InpMaxGridLevels);
-         for(int step = 1; step <= needed; step++)
-           {
-            double level = AlignToTick(_Symbol, nearestSell + InpGridSpacing * step);
-            PlaceSellStop(level, InpFixedLot, state.magicNumber);
-           }
-        }
 
-      // ---- BUY side ----
-      if(currentBuy < InpMinGridLevels && nearestBuy > 0)
-        {
-         for(int step = 1; step <= InpMinGridLevels; step++)
+      // ---- Both sides already have orders — top up toward the cap if either has thinned ----
+      // Fill SELL inside
+      if((bid - nearestSell) > InpInitialGap/2 && nearestSell > 0)
+         {
+         for(double level = nearestSell + InpGridSpacing; level < (bid - InpInitialGap/2); level += InpGridSpacing)
            {
-            double level = AlignToTick(_Symbol, nearestBuy - InpGridSpacing * step);
-            PlaceBuyStop(level, InpFixedLot, state.magicNumber);
+            double lvl = AlignToTick(_Symbol, level);
+            PlaceSellStop(lvl, InpFixedLot, state.magicNumber);
            }
-        }
-     }
-     
-     
+         }
+ 
+      // Fill Buy inside
+      if((nearestBuy - ask) > InpInitialGap/2 && nearestBuy > 0)
+         {
+         for(double level = nearestBuy - InpGridSpacing; level > (ask + InpInitialGap/2); level -= InpGridSpacing)
+           {
+            double lvl = AlignToTick(_Symbol, level);
+            PlaceBuyStop(lvl, InpFixedLot, state.magicNumber);
+           }
+         }
+      }
    // ---- OUTSIDE FILL (BRICK 5) — independent, runs regardless of inside ----
    if(InpEnableRefillOutside)
      {
-      // ---- SELL side ----
-      int    currentSell   = CountOrderType(ORDER_TYPE_SELL_STOP, state.magicNumber);
-      double outermostSell = GetLowestSellStop(state.magicNumber);
-      if(currentSell < InpMinGridLevels && outermostSell > 0)
+      int    currentSellOut   = CountOrderType(ORDER_TYPE_SELL_STOP, state.magicNumber);
+      double outermostSellOut = GetLowestSellStop(state.magicNumber);
+      if(currentSellOut < InpMinGridLevels && outermostSellOut > 0)
         {
-         int needed = InpMaxGridLevels - currentSell;
+         int needed = InpMaxGridLevels - currentSellOut;
          for(int step = 1; step <= needed; step++)
            {
-            double level = AlignToTick(_Symbol, outermostSell - InpGridSpacing * step);
+            double level = AlignToTick(_Symbol, outermostSellOut - InpGridSpacing * step);
             PlaceSellStop(level, InpFixedLot, state.magicNumber);
            }
         }
 
-      // ---- BUY side ----
-      int    currentBuy   = CountOrderType(ORDER_TYPE_BUY_STOP, state.magicNumber);
-      double outermostBuy = GetHighestBuyStop(state.magicNumber);
-      if(currentBuy < InpMinGridLevels && outermostBuy > 0)
+      int    currentBuyOut   = CountOrderType(ORDER_TYPE_BUY_STOP, state.magicNumber);
+      double outermostBuyOut = GetHighestBuyStop(state.magicNumber);
+      if(currentBuyOut < InpMinGridLevels && outermostBuyOut > 0)
         {
-         int needed = InpMaxGridLevels - currentBuy;
+         int needed = InpMaxGridLevels - currentBuyOut;
          for(int step = 1; step <= needed; step++)
            {
-            double level = AlignToTick(_Symbol, outermostBuy + InpGridSpacing * step);
+            double level = AlignToTick(_Symbol, outermostBuyOut + InpGridSpacing * step);
             PlaceBuyStop(level, InpFixedLot, state.magicNumber);
            }
         }
