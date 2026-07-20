@@ -95,10 +95,10 @@ input ENUM_SHIFT_ANCHOR InpShiftAnchor = SHIFT_LAST_HIT; // Anchor used if shift
 input bool   InpEnableRecentering  = false;    // Recenter grid when fresh and off-center?
 input double InpThresholdFactor    = 3.0;      // Recenter zone divisor (gap / factor = trigger threshold)
 
+
+input ENUM_REFILL_STYLE InpRefillStyle = REFILL_THRESHOLD;  // Refill Style; thershold or following price
 //--- BRICK 4: Refill inside gap -----------------------------------------
 input bool   InpEnableRefillInside  = false;   // Refill inside the gap (between nearest BUY/SELL) when empty?
-input ENUM_REFILL_STYLE InpRefillStyle = REFILL_THRESHOLD;                                                // NOTE: keep InpEnableShifting = false when this is on.
-
 //--- BRICK 5: Refill outside range --------------------------------------
 input bool   InpEnableRefillOutside = false;   // Refill outside levels when count drops below InpMinGridLevels?
                                                 // NOTE: keep InpEnableShifting = false when this is on.

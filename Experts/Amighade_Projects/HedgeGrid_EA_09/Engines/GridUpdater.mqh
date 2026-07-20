@@ -103,41 +103,45 @@ void UpdateOppositeGrid_FirstPass(ENUM_ORDER_TYPE hitDirection,
       LogLotUpdated(updatedCount, oldLot, newLot);
      }
 }
-
 //+------------------------------------------------------------------+
-//| 2nd pass: replace ALL opposite orders with newLot               |
+//| 2nd pass: replace opposite orders with newLot — but only the     |
+//| ones that actually differ. Orders already at newLot are left     |
+//| untouched, so repeated same-side hits with no real lot change    |
+//| don't churn the whole side for nothing.                          |
 //+------------------------------------------------------------------+
 void UpdateOppositeGrid_SecondPass(ENUM_ORDER_TYPE hitDirection,
                                    double newLot,
                                    GridState &state)
 {
    ENUM_ORDER_TYPE oppositeType = GetOppositeOrderType(hitDirection);
-
    ulong  tickets[];
    double lots[];
    double prices[];
    int    count = CollectOppositeOrders(oppositeType, state.magicNumber,
                                         tickets, lots, prices);
 
-   double oldLot = (count > 0) ? lots[0] : 0.0;
+   int    updatedCount = 0;
+   double oldLot       = 0.0;
+   double newLotNorm    = NormalizeDouble(newLot, 2);
 
-   // Delete all
-   for(int i = 0; i < count; i++)
-      DeleteOrder(tickets[i]);
-
-   // Rebuild all at new lot, same prices
    for(int i = 0; i < count; i++)
      {
+      if(NormalizeDouble(lots[i], 2) == newLotNorm)
+         continue; // already correct — leave it alone
+
+      oldLot = lots[i];
+      DeleteOrder(tickets[i]);
       if(oppositeType == ORDER_TYPE_SELL_STOP)
          PlaceSellStop(prices[i], newLot, state.magicNumber);
       else
          PlaceBuyStop(prices[i],  newLot, state.magicNumber);
+      updatedCount++;
      }
 
    state.currentBlockLot = newLot;
-   LogLotUpdated(count, oldLot, newLot);
+   if(updatedCount > 0)
+      LogLotUpdated(updatedCount, oldLot, newLot);
 }
-
 //+------------------------------------------------------------------+
 //| Sub-option A — pass-counter driven (the only implemented mode)   |
 //+------------------------------------------------------------------+

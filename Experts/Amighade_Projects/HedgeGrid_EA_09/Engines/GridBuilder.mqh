@@ -261,9 +261,10 @@ void RefillFollowPrice(GridState &state)
 
          // Rebuild SELL side from scratch — first level at InpInitialGap from bid, rest at InpGridSpacing
          double sellLevel = 0.0;
+         nearestBuy  = GetNearestBuyStop(state.magicNumber);
          for(int step = 1; step <= InpMaxGridLevels; step++)
            {
-            sellLevel = (step == 1) ? (bid - InpInitialGap) : (sellLevel - InpGridSpacing);
+            sellLevel = (step == 1) ? (nearestBuy - InpInitialGap) : (sellLevel - InpGridSpacing);
             double lvl = AlignToTick(_Symbol, sellLevel);
             PlaceSellStop(lvl, InpFixedLot, state.magicNumber);
            }
@@ -281,9 +282,10 @@ void RefillFollowPrice(GridState &state)
 
          // Rebuild BUY side from scratch — first level at InpInitialGap from ask, rest at InpGridSpacing
          double buyLevel = 0.0;
+         double nearestSell = GetNearestSellStop(state.magicNumber);
          for(int step = 1; step <= InpMaxGridLevels; step++)
            {
-            buyLevel = (step == 1) ? (ask + InpInitialGap) : (buyLevel + InpGridSpacing);
+            buyLevel = (step == 1) ? (nearestSell + InpInitialGap) : (buyLevel + InpGridSpacing);
             double lvl = AlignToTick(_Symbol, buyLevel);
             PlaceBuyStop(lvl, InpFixedLot, state.magicNumber);
            }
