@@ -148,11 +148,12 @@ void UpdateOppositeGrid_SecondPass(ENUM_ORDER_TYPE hitDirection,
 void UpdateOppositeGrid_ModeA(GridState &state)
 {
    double newLot = AlignVolume(_Symbol, state.lastHitLot * 2.0);
+   UpdateOppositeGrid_FirstPass(state.lastHitDirection, newLot, state);
 
-   if(state.passCounter < 2)
+   /*if(state.passCounter < 2)
       UpdateOppositeGrid_FirstPass(state.lastHitDirection, newLot, state);
    else
-      UpdateOppositeGrid_SecondPass(state.lastHitDirection, newLot, state);
+      UpdateOppositeGrid_SecondPass(state.lastHitDirection, newLot, state);*/
 }
 
 //+------------------------------------------------------------------+
