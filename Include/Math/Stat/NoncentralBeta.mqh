@@ -429,162 +429,59 @@ bool MathCumulativeDistributionNoncentralBeta(const double &x[],const double a,c
 //+------------------------------------------------------------------+
 double MathQuantileNoncentralBeta(const double probability,const double a,const double b,const double lambda,const bool tail,const bool log_mode,int &error_code)
   {
-   if(log_mode==true && probability==QNEGINF)
-      return 0.0;
-   if(log_mode==false && probability==0)
-      return 0.0;
-//--- if lambda==0, return beta quantile
    if(lambda==0.0)
-      return MathQuantileBeta(probability,a,b,error_code);
-//--- check parameters
-   if(!MathIsValidNumber(probability) || !MathIsValidNumber(a) || !MathIsValidNumber(b) || !MathIsValidNumber(lambda))
+      return MathQuantileBeta(probability,a,b,tail,log_mode,error_code);
+
+   if(!MathIsValidNumber(a) || !MathIsValidNumber(b) || !MathIsValidNumber(lambda))
      {
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- a,b,lambda must be positive
-   if(a<=0.0 || b<=0.0 || lambda<0)
+
+   if(a<=0.0 || b<=0.0 || lambda<0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
 
-//--- calculate real probability
-   double prob=TailLogProbability(probability,tail,log_mode);
-//--- check probability range
-   if(prob<0.0 || prob>1.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
+   double prob=0.0;
+   if(!MathCheckProbabilityInput(probability,tail,log_mode,prob,error_code))
       return QNaN;
-     }
 
-   error_code=ERR_OK;
-//--- check probabilty
    if(prob==0.0)
       return 0.0;
    if(prob==1.0)
       return 1.0;
 
-   double lambda_half=lambda*0.5;
-   double lambda_half_log=MathLog(lambda_half);
-   double lambda_half_sqrt=MathSqrt(lambda_half);
-   double lambda_half_exp=MathExp(-lambda_half);
+   int err_code=ERR_OK;
+   double lo=0.0;
+   double hi=1.0;
+   const int max_iterations=220;
+   const double abs_tol=1e-14;
+   const double rel_tol=1e-14;
 
-   double x0=int(MathMax(lambda_half-5*lambda_half_sqrt,0));
-   double b_gamma_log=MathGammaLog(b);
-   double eps=10E-18;
-   double h_min=MathSqrt(eps);
-
-//double lambda_half=lambda*0.5;
-   double r_beta0=MathBeta(a,b);
-
-   int    err_code=0;
-   double x=0.5;
-   double h=1.0;
-   const int max_terms=100;
-//--- Newton iterations
-   const int max_iterations=50;
-   int iterations=0;
-   while(iterations<max_iterations)
+   for(int i=0;i<max_iterations;i++)
      {
-      //--- check convergence
-      if((MathAbs(h)>h_min*MathAbs(x) && MathAbs(h)>h_min)==false)
-         break;
-
-      //--- calculate PDF
-      double pdf=0;
-      if(x<=0.0 || x>=1.0)
-         pdf=0;
-      else
+      double mid=0.5*(lo+hi);
+      double cdf_mid=MathCumulativeDistributionNoncentralBeta(mid,a,b,lambda,true,false,err_code);
+      if(err_code!=ERR_OK || !MathIsValidNumber(cdf_mid))
         {
-         double fact_mult=1.0;
-         double pwr_lambda_half=1.0;
-         double pwr_x=MathExp((a-1.0)*MathLog(x));
-         double r_beta=r_beta0;
-         //--- direct sum calculation  
-         for(int j=0;; j++)
-           {
-            if(j>0)
-              {
-               pwr_x*=x;
-               pwr_lambda_half*=lambda_half;
-               fact_mult/=j;
-               double jm1=j-1;
-               r_beta*=((a+jm1)/(a+b+jm1));
-              }
-            double term=pwr_x*fact_mult*pwr_lambda_half/r_beta;
-            //---
-            if(term<10E-18)
-               break;
-            pdf+=term;
-           }
-         //--- calculate density coef
-         pdf*=MathExp((b-1.0)*MathLog(1.0-x))*lambda_half_exp;
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
         }
-
-      //--- calculate CDF
-      double cdf=0;
-      if(x<=0.0)
-         cdf=0;
-      if(x>=1.0)
-         cdf=1;
+      if(cdf_mid<prob)
+         lo=mid;
       else
+         hi=mid;
+      if(MathBisectionConverged(lo,hi,abs_tol,rel_tol))
         {
-         double a0=a+x0;
-         double beta = MathGammaLog(a0) + b_gamma_log - MathGammaLog(a0+b);
-         double temp = MathBetaIncomplete(x, a0, b);
-         double gx=MathExp(a0*MathLog(x)+b*MathLog(1-x)-beta-MathLog(a0));
-
-         double q=0;
-         if(a0>a)
-            q=MathExp(-lambda_half+x0*lambda_half_log-MathGammaLog(x0+1));
-         else
-            q=lambda_half_exp;
-
-         double sumq=1-q;
-         double betanc=q*temp;
-         int j=0;
-         double ab=a+b;
-         for(;;)
-           {
-            j++;
-            temp-=gx;
-            gx*=x*(ab+j-1)/(a+j);
-            q*=lambda_half/j;
-            sumq-=q;
-            betanc+=temp*q;
-            double err=(temp-gx)*sumq;
-            if(j>max_terms || err<1E-18)
-               break;
-           }
-         cdf=MathMin(betanc,1.0);
+         error_code=ERR_OK;
+         return 0.5*(lo+hi);
         }
-
-      //--- calculate ratio
-      h=(cdf-prob)/pdf;
-
-      double x_new=x-h;
-      if(x_new<0.0)
-         x_new=x*0.1;
-      else
-      if(x_new>1.0)
-         x_new=1.0-(1-x)*0.1;
-
-      if(MathAbs(x_new-x)<10E-16)
-         break;
-      x=x_new;
-
-      iterations++;
      }
-//--- check convergence
-   if(iterations<max_iterations)
-      return x;
-   else
-     {
-      error_code=ERR_NON_CONVERGENCE;
-      return QNaN;
-     }
-   return x;
+
+   error_code=ERR_OK;
+   return 0.5*(lo+hi);
   }
 //+------------------------------------------------------------------+
 //| Noncental Beta distribution quantile function (inverse CDF)      |
@@ -629,154 +526,25 @@ double MathQuantileNoncentralBeta(const double probability,const double a,const 
 //+------------------------------------------------------------------+
 bool MathQuantileNoncentralBeta(const double &probability[],const double a,const double b,const double lambda,const bool tail,const bool log_mode,double &result[])
   {
-//--- if lambda==0, return beta quantile
    if(lambda==0.0)
       return MathQuantileBeta(probability,a,b,tail,log_mode,result);
-//--- check parameters
-   if(!MathIsValidNumber(a) || !MathIsValidNumber(b) || !MathIsValidNumber(lambda))
-      return false;
-//--- a,b,lambda must be positive
-   if(a<=0.0 || b<=0.0 || lambda<0)
-      return false;
 
    int data_count=ArraySize(probability);
-   if(data_count==0)
-      return false;
+   if(data_count<=0)
+      return(false);
 
-   int err_code=0;
-   ArrayResize(result,data_count);
+   if(ArrayResize(result,data_count)!=data_count)
+      return(false);
 
-   double lambda_half=lambda*0.5;
-   double lambda_half_log=MathLog(lambda_half);
-   double lambda_half_sqrt=MathSqrt(lambda_half);
-   double lambda_half_exp=MathExp(-lambda_half);
-   double r_beta0=MathBeta(a,b);
-
-   double x0=int(MathMax(lambda_half-5*lambda_half_sqrt,0));
-   double b_gamma_log=MathGammaLog(b);
-   const double eps=10E-18;
-   double h_min=MathSqrt(eps);
-   const int max_terms=100;
-
-   for(int i=0; i<data_count; i++)
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      //--- calculate real probability
-      double prob=TailLogProbability(probability[i],tail,log_mode);
-
-      if(!MathIsValidNumber(prob))
-         return false;
-
-      if(prob==0.0)
-         result[i]=0.0;
-      else
-      if(prob==1.0)
-         result[i]=1.0;
-      else
-        {
-         double x=0.5;
-         double h=1.0;
-         //--- Newton iterations
-         const int max_iterations=50;
-         int iterations=0;
-         while(iterations<max_iterations)
-           {
-            //--- check convergence
-            if((MathAbs(h)>h_min*MathAbs(x) && MathAbs(h)>h_min)==false)
-               break;
-
-            //--- calculate PDF
-            double pdf=0;
-            if(x<=0.0 || x>=1.0)
-               pdf=0;
-            else
-              {
-               double fact_mult=1.0;
-               double pwr_lambda_half=1.0;
-               double pwr_x=MathExp((a-1.0)*MathLog(x));
-               double r_beta=r_beta0;
-               //--- direct sum calculation  
-               for(int j=0;; j++)
-                 {
-                  if(j>0)
-                    {
-                     pwr_x*=x;
-                     pwr_lambda_half*=lambda_half;
-                     fact_mult/=j;
-                     double jm1=j-1;
-                     r_beta*=((a+jm1)/(a+b+jm1));
-                    }
-                  double term=pwr_x*fact_mult*pwr_lambda_half/r_beta;
-                  //---
-                  if(term<10E-18)
-                     break;
-                  pdf+=term;
-                 }
-               //--- calculate density coef
-               pdf*=MathExp((b-1.0)*MathLog(1.0-x))*lambda_half_exp;
-              }
-
-            //--- calculate CDF
-            double cdf=0;
-            if(x<=0.0)
-               cdf=0;
-            if(x>=1.0)
-               cdf=1;
-            else
-              {
-               double a0=a+x0;
-               double beta = MathGammaLog(a0) + b_gamma_log - MathGammaLog(a0+b);
-               double temp = MathBetaIncomplete(x, a0, b);
-               double gx=MathExp(a0*MathLog(x)+b*MathLog(1-x)-beta-MathLog(a0));
-
-               double q=0;
-               if(a0>a)
-                  q=MathExp(-lambda_half+x0*lambda_half_log-MathGammaLog(x0+1));
-               else
-                  q=lambda_half_exp;
-
-               double sumq=1-q;
-               double betanc=q*temp;
-               int j=0;
-               double ab=a+b;
-               for(;;)
-                 {
-                  j++;
-                  temp-=gx;
-                  gx*=x*(ab+j-1)/(a+j);
-                  q*=lambda_half/j;
-                  sumq-=q;
-                  betanc+=temp*q;
-                  double err=(temp-gx)*sumq;
-                  if(j>max_terms || err<1E-18)
-                     break;
-                 }
-               cdf=MathMin(betanc,1.0);
-              }
-
-            //--- calculate ratio
-            h=(cdf-prob)/pdf;
-
-            double x_new=x-h;
-            if(x_new<0.0)
-               x_new=x*0.1;
-            else
-            if(x_new>1.0)
-               x_new=1.0-(1-x)*0.1;
-
-            if(MathAbs(x_new-x)<10E-16)
-               break;
-            x=x_new;
-
-            iterations++;
-           }
-         //--- check convergence
-         if(iterations<max_iterations)
-            result[i]=x;
-         else
-            return false;
-        }
+      result[i]=MathQuantileNoncentralBeta(probability[i],a,b,lambda,tail,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+         return(false);
      }
-   return true;
+
+   return(true);
   }
 //+------------------------------------------------------------------+
 //| Noncental Beta distribution quantile function (inverse CDF)      |

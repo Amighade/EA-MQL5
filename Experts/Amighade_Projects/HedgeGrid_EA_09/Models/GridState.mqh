@@ -24,8 +24,10 @@ struct GridState
 
    //--- Last hit tracking
    ENUM_ORDER_TYPE lastHitDirection;
+   ENUM_ORDER_TYPE prevHitDirection;
    double          lastHitLot;
    double          lastHitPrice;
+   double          prevHitPrice;
    datetime        lastHitTime;
    ulong           lastHitTicket;
 
@@ -35,6 +37,11 @@ struct GridState
 
    //--- Block lot tracking (Brick 1)
    double         currentBlockLot;
+   
+   //--- Level revisit tracking (Brick 1, Mode B: level increment)
+   double         levelPrices[];
+   int            levelVisitCount[];
+   int            levelLastSide[];   // 0 = sell, 1 = buy, -1 = none
 
    //--- Basket tracking
    double         basketProfit;
@@ -81,9 +88,11 @@ void ResetGridState(GridState &state)
    state.lotMode            = LOT_FULL;
    state.anchorBuy          = 0.0;
    state.anchorSell         = 0.0;
-   state.lastHitDirection   = ORDER_TYPE_BUY;
+   state.lastHitDirection   = WRONG_VALUE;
+   state.prevHitDirection   = WRONG_VALUE;
    state.lastHitLot         = 0.0;
    state.lastHitPrice       = 0.0;
+   state.prevHitPrice       = 0.0;
    state.lastHitTime        = 0;
    state.lastHitTicket      = 0;
    state.farthestHitBuy     = 0.0;
@@ -105,6 +114,9 @@ void ResetGridState(GridState &state)
    state.sessionAllowed     = false;
    state.gapFaultDetected   = false;
    state.mode               = MODE_RUNNING;
+   ArrayResize(state.levelPrices, 0);
+   ArrayResize(state.levelVisitCount, 0);
+   ArrayResize(state.levelLastSide, 0);
    // lastBarGridCheck / lastBarRecenter NOT reset — candle trackers persist across cycles
    // magicNumber NOT reset — set once in OnInit
   }

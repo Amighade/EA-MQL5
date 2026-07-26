@@ -29,8 +29,8 @@ double MathProbabilityDensityChiSquare(const double x,const double nu,const bool
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- nu must be positive integer
-   if(nu<=0 || nu!=MathRound(nu))
+//--- nu must be positive
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -42,8 +42,10 @@ double MathProbabilityDensityChiSquare(const double x,const double nu,const bool
 
 //--- calculate using Gamma density
    double pdf=MathProbabilityDensityGamma(x,nu*0.5,2.0,error_code);
+   if(error_code!=ERR_OK || !MathIsValidNumber(pdf))
+      return QNaN;
    if(log_mode==true)
-      return MathLog(pdf);
+      return (pdf==0.0 ? QNEGINF : MathLog(pdf));
    return pdf;
   }
 //+------------------------------------------------------------------+
@@ -84,8 +86,8 @@ bool MathProbabilityDensityChiSquare(const double &x[],const double nu,const boo
 //--- check arguments
    if(!MathIsValidNumber(nu))
       return false;
-//--- nu must be positive integer
-   if(nu<=0 || nu!=MathRound(nu))
+//--- nu must be positive
+   if(nu<=0.0)
       return false;
 
    int data_count=ArraySize(x);
@@ -107,8 +109,10 @@ bool MathProbabilityDensityChiSquare(const double &x[],const double nu,const boo
         {
          //--- calculate using Gamma density
          double pdf=MathProbabilityDensityGamma(x_arg,nu*0.5,2.0,error_code);
+         if(error_code!=ERR_OK || !MathIsValidNumber(pdf))
+            return false;
          if(log_mode==true)
-            result[i]=MathLog(pdf);
+            result[i]=(pdf==0.0 ? QNEGINF : MathLog(pdf));
          else
             result[i]=pdf;
         }
@@ -158,8 +162,8 @@ double MathCumulativeDistributionChiSquare(const double x,const double nu,const 
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- nu must be positive integer
-   if(nu<=0 || nu!=MathRound(nu))
+//--- nu must be positive
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -167,7 +171,7 @@ double MathCumulativeDistributionChiSquare(const double x,const double nu,const 
 
    error_code=ERR_OK;
    if(x<=0.0)
-      return TailLog0(true,log_mode);
+      return TailLogValue(0.0,tail,log_mode);
 //---- calculate using Gamma distribution
    return MathCumulativeDistributionGamma(x,nu*0.5,2.0,tail,log_mode,error_code);
   }
@@ -211,8 +215,8 @@ bool MathCumulativeDistributionChiSquare(const double &x[],const double nu,const
 //--- check NaN
    if(!MathIsValidNumber(nu))
       return false;
-//--- nu must be positive integer
-   if(nu<=0 || nu!=MathRound(nu))
+//--- nu must be positive
+   if(nu<=0.0)
       return false;
 
    int data_count=ArraySize(x);
@@ -229,10 +233,12 @@ bool MathCumulativeDistributionChiSquare(const double &x[],const double nu,const
          return false;
 
       if(x_arg<=0.0)
-         result[i]=TailLog0(true,log_mode);
+         result[i]=TailLogValue(0.0,tail,log_mode);
       else
         {
          double cdf=MathCumulativeDistributionGamma(x_arg,nu*0.5,2.0,true,false,error_code);
+         if(error_code!=ERR_OK || !MathIsValidNumber(cdf))
+            return false;
          result[i]=TailLogValue(cdf,tail,log_mode);
         }
      }
@@ -288,16 +294,30 @@ double MathQuantileChiSquare(const double probability,const double nu,const bool
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
-//--- nu must be integer
-   if(nu!=MathRound(nu))
+//--- handle log zero probability
+   if(log_mode && tail && probability==QNEGINF)
      {
-      error_code=ERR_ARGUMENTS_INVALID;
+      error_code=ERR_OK;
+      return 0.0;
+     }
+
+   if(log_mode && !tail && probability==QNEGINF)
+     {
+      error_code=ERR_OK;
+      return QPOSINF;
+     }
+
+//--- check probability
+   if(!MathIsValidNumber(probability))
+     {
+      error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
+
 //--- calculate real probability
    double prob=TailLogProbability(probability,tail,log_mode);
 //--- check probability range
-   if(prob<0.0 || prob>1.0)
+   if(prob<0.0 || prob>1.0 || !MathIsValidNumber(prob))
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -358,9 +378,6 @@ bool MathQuantileChiSquare(const double &probability[],const double nu,const boo
 //--- nu must be positive
    if(nu<=0)
       return false;
-//--- nu must be integer
-   if(nu!=MathRound(nu))
-      return false;
 
    int data_count=ArraySize(probability);
    if(data_count==0)
@@ -370,11 +387,27 @@ bool MathQuantileChiSquare(const double &probability[],const double nu,const boo
    ArrayResize(result,data_count);
    for(int i=0; i<data_count; i++)
      {
+      //--- handle log zero probability
+      if(log_mode && tail && probability[i]==QNEGINF)
+        {
+         result[i]=0.0;
+         continue;
+        }
+
+      if(log_mode && !tail && probability[i]==QNEGINF)
+        {
+         result[i]=QPOSINF;
+         continue;
+        }
+
       //--- calculate real probability
+      if(!MathIsValidNumber(probability[i]))
+         return false;
+
       double prob=TailLogProbability(probability[i],tail,log_mode);
 
       //--- check probability range
-      if(prob<0.0 || prob>1.0)
+      if(prob<0.0 || prob>1.0 || !MathIsValidNumber(prob))
          return false;
 
       if(prob==0.0)
@@ -386,6 +419,8 @@ bool MathQuantileChiSquare(const double &probability[],const double nu,const boo
         {
          //--- calculate using Gamma distribution
          result[i]=MathQuantileGamma(prob,nu*0.5,2.0,error_code);
+         if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+            return false;
         }
      }
    return true;
@@ -430,14 +465,8 @@ double MathRandomChiSquare(const double nu,int &error_code)
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- nu must be integer
-   if(nu!=MathRound(nu))
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
-     }
 //--- nu must be positive
-   if(nu<=0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -466,11 +495,8 @@ bool MathRandomChiSquare(const double nu,const int data_count,double &result[])
 //--- check NaN
    if(!MathIsValidNumber(nu))
       return false;
-//--- nu must be integer
-   if(nu!=MathRound(nu))
-      return false;
 //--- nu must be positive
-   if(nu<=0)
+   if(nu<=0.0 || data_count<=0)
       return false;
    int error_code=0;
 //--- prepare output array and calculate random values
@@ -479,6 +505,8 @@ bool MathRandomChiSquare(const double nu,const int data_count,double &result[])
      {
       //--- generate Gamma random number
       result[i]=MathRandomGamma(nu*0.5,2.0,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+         return false;
      }
    return true;
   }
@@ -512,8 +540,8 @@ bool MathMomentsChiSquare(const double nu,double &mean,double &variance,double &
       error_code=ERR_ARGUMENTS_NAN;
       return false;
      }
-//--- nu must be positive integer
-   if(nu<=0 || nu!=MathRound(nu))
+//--- nu must be positive
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return false;
@@ -528,4 +556,4 @@ bool MathMomentsChiSquare(const double nu,double &mean,double &variance,double &
 //--- successful
    return true;
   }
-//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+ 

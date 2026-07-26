@@ -291,68 +291,76 @@ bool MathCumulativeDistributionPoisson(const double &x[],const double lambda,dou
 double MathQuantilePoisson(const double probability,const double lambda,const bool tail,const bool log_mode,int &error_code)
   {
 //--- check parameters
-   if(!MathIsValidNumber(probability) || !MathIsValidNumber(lambda))
+   if(!MathIsValidNumber(lambda))
      {
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
 //--- lambda must be positive
-   if(lambda<=0.0)
+   if(lambda<0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
+//--- calculate probability
+   double prob=0.0;
+   if(!MathCheckProbabilityInput(probability,tail,log_mode,prob,error_code))
+      return QNaN;
 
-//--- calculate real probability
-   double prob=TailLogProbability(probability,tail,log_mode);
-//--- check probability range
-   if(prob<0.0 || prob>1.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
-     }
-//--- check
+   if(prob==0.0)
+      return 0.0;
    if(prob==1.0)
      {
       error_code=ERR_RESULT_INFINITE;
       return QPOSINF;
      }
-   error_code=ERR_OK;
-   if(prob==0.0)
-      return 0.0;
 
-   prob*=1-1000*DBL_EPSILON;
-   int    err_code=0;
-   int    j=0;
-   const int max_terms=500;
-   double coef_lambda=MathExp(-lambda);
-   double pwr_lambda=1.0;
-   double inverse_fact=1.0;
-   double sum=0;
-//--- direct calculation of the quantile
-   while(sum<prob && j<max_terms)
+   if(lambda==0.0)
      {
-      if(j>0)
+      error_code=ERR_OK;
+      return 0.0;
+     }
+
+   int err_code=ERR_OK;
+   int lo=0;
+   int hi=(int)MathCeil(MathMax(1.0,lambda+10.0*MathSqrt(lambda+1.0)));
+   double cdf_hi=MathCumulativeDistributionPoisson(hi,lambda,true,false,err_code);
+
+   const int max_expand=100;
+   int expand=0;
+   while(err_code==ERR_OK && MathIsValidNumber(cdf_hi) && cdf_hi<prob && expand<max_expand)
+     {
+      lo=hi+1;
+      hi=hi*2+1;
+      cdf_hi=MathCumulativeDistributionPoisson(hi,lambda,true,false,err_code);
+      expand++;
+     }
+
+   if(err_code!=ERR_OK || !MathIsValidNumber(cdf_hi) || cdf_hi<prob)
+     {
+      error_code=ERR_NON_CONVERGENCE;
+      return QNaN;
+     }
+
+   int left=0;
+   int right=hi;
+   while(left<right)
+     {
+      int mid=left+(right-left)/2;
+      double cdf_mid=MathCumulativeDistributionPoisson(mid,lambda,true,false,err_code);
+      if(err_code!=ERR_OK || !MathIsValidNumber(cdf_mid))
         {
-         pwr_lambda*=lambda;
-         inverse_fact/=j;
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
         }
-      sum+=coef_lambda*pwr_lambda*inverse_fact;
-      j++;
-     }
-//--- check convergence
-   if(j<max_terms)
-     {
-      if(j==0)
-         return 0;
+      if(cdf_mid<prob)
+         left=mid+1;
       else
-         return j-1;
+         right=mid;
      }
-   else
-     {
-      error_code=ERR_RESULT_INFINITE;
-      return QPOSINF;
-     }
+
+   error_code=ERR_OK;
+   return (double)left;
   }
 //+------------------------------------------------------------------+
 //| Poisson distribution quantile function (inverse CDF)             |
@@ -393,67 +401,31 @@ double MathQuantilePoisson(const double probability,const double lambda,int &err
 //+------------------------------------------------------------------+
 bool MathQuantilePoisson(const double &probability[],const double lambda,const bool tail,const bool log_mode,double &result[])
   {
-//--- NaN
-   if(!MathIsValidNumber(lambda))
-      return false;
-//--- lambda must be positive
-   if(lambda<=0.0)
-      return false;
-
    int data_count=ArraySize(probability);
-   if(data_count==0)
-      return false;
+   if(data_count<=0)
+      return(false);
 
-   int error_code=0;
-   ArrayResize(result,data_count);
-   double coef_lambda=MathExp(-lambda);
+   if(ArrayResize(result,data_count)!=data_count)
+      return(false);
 
-   for(int i=0; i<data_count; i++)
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      //--- calculate real probability
-      double prob=TailLogProbability(probability[i],tail,log_mode);
+      result[i]=MathQuantilePoisson(probability[i],lambda,tail,log_mode,error_code);
 
-      //--- check probability range
-      if(prob<0.0 || prob>1.0)
-         return false;
-      else
-      if(prob==1.0)
-         result[i]=QPOSINF;
-      if(prob==0.0)
-         result[i]=0;
-      else
-        {
-         prob*=1-1000*DBL_EPSILON;
-         int    err_code=0;
-         int    j=0;
-         double sum=0.0;
-         const int max_terms=500;
-         double pwr_lambda=1.0;
-         double inverse_fact=1.0;
-         //--- direct calculation
-         while(sum<prob && j<max_terms)
-           {
-            if(j>0)
-              {
-               pwr_lambda*=lambda;
-               inverse_fact/=j;
-              }
-            sum+=coef_lambda*pwr_lambda*inverse_fact;
-            j++;
-           }
-         //--- check convergence
-         if(j<max_terms)
-           {
-            if(j==0)
-               result[i]=0;
-            else
-               result[i]=j-1;
-           }
-         else
-            return false;
-        }
+      //--- p=1 is a valid boundary case for qpois and returns +inf
+      //--- this must not make the array overload fail in benchmarks
+      if(error_code==ERR_RESULT_INFINITE)
+         continue;
+
+      if(error_code!=ERR_OK)
+         return(false);
+
+      if(!MathIsValidNumber(result[i]))
+         return(false);
      }
-   return true;
+
+   return(true);
   }
 //+------------------------------------------------------------------+
 //| Poisson distribution quantile function (inverse CDF)             |
@@ -788,4 +760,4 @@ bool MathMomentsPoisson(const double lambda,double &mean,double &variance,double
 //--- successful
    return true;
   }
-//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+ 

@@ -216,8 +216,8 @@ double MathCumulativeDistributionHypergeometric(const double x,const double m,co
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
-//--- m,k,n,x must be positive
-   if(m<0 || k<0 || n<0 || x<0)
+//--- m,k,n must be non-negative
+   if(m<0 || k<0 || n<0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -230,17 +230,28 @@ double MathCumulativeDistributionHypergeometric(const double x,const double m,co
      }
 
    error_code=ERR_OK;
-   if(x>=n || x>=k)
+
+   int mm=(int)m;
+   int kk=(int)k;
+   int nn=(int)n;
+   int xx=(int)x;
+
+   int lower=(int)MathMax(0,nn-(mm-kk));
+   int upper=(int)MathMin(nn,kk);
+
+   if(xx<lower)
+      return TailLog0(tail,log_mode);
+   if(xx>=upper)
       return TailLog1(tail,log_mode);
-//--- calculate cdf
-   double pdf = MathExp(MathBinomialCoefficientLog(m-k,n)-MathBinomialCoefficientLog(m,n));
-   double cdf = pdf;
-   double coef=m-k-n+1;
-   for(int j=0; j<=x-1; j++)
-     {
-      pdf = pdf*(k-j)*(n-j)/((j+1)*(coef+j));
-      cdf = cdf + pdf;
-     }
+
+//--- calculate cdf only on the valid support
+   double cdf=0.0;
+   for(int j=lower; j<=xx; j++)
+      cdf+=MathProbabilityDensityHypergeometric(j,m,k,n,error_code);
+
+   if(error_code!=ERR_OK || !MathIsValidNumber(cdf))
+      return QNaN;
+
    return TailLogValue(MathMin(cdf,1.0),tail,log_mode);
   }
 //+------------------------------------------------------------------+
@@ -293,10 +304,10 @@ bool MathCumulativeDistributionHypergeometric(const double &x[],const double m,c
 //--- check NaN
    if(!MathIsValidNumber(m) || !MathIsValidNumber(k) || !MathIsValidNumber(n))
       return false;
-//--- m,k,n,x must be integer
+//--- m,k,n must be integer
    if(m!=MathRound(m) || k!=MathRound(k) || n!=MathRound(n))
       return false;
-//--- m,k,n must be positive
+//--- m,k,n must be non-negative
    if(m<0 || k<0 || n<0)
       return false;
 //--- check ranges
@@ -307,35 +318,18 @@ bool MathCumulativeDistributionHypergeometric(const double &x[],const double m,c
    if(data_count==0)
       return false;
 
-   double coef=m-k-n+1;
-
    ArrayResize(result,data_count);
+   int error_code=ERR_OK;
+
    for(int i=0; i<data_count; i++)
      {
       double x_arg=x[i];
-
-      if(!MathIsValidNumber(x_arg))
+      if(!MathIsValidNumber(x_arg) || x_arg!=MathRound(x_arg))
          return false;
 
-      //--- x must be positive and integer
-      if(x_arg<0 || x_arg!=MathRound(x_arg))
+      result[i]=MathCumulativeDistributionHypergeometric(x_arg,m,k,n,tail,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
          return false;
-
-      //--- check ranges
-      if(x_arg>=n || x_arg>=k)
-         result[i]=TailLog1(tail,log_mode);
-      else
-        {
-         //--- calculate cdf
-         double pdf = MathExp(MathBinomialCoefficientLog(m-k,n)-MathBinomialCoefficientLog(m,n));
-         double cdf = pdf;
-         for(int j=0; j<=x_arg-1; j++)
-           {
-            pdf = pdf*(k-j)*(n-j)/((j+1)*(coef+j));
-            cdf = cdf + pdf;
-           }
-         result[i]=TailLogValue(MathMin(cdf,1.0),tail,log_mode);
-        }
      }
    return true;
   }
@@ -386,60 +380,54 @@ bool MathCumulativeDistributionHypergeometric(const double &x[],const double m,c
 //+------------------------------------------------------------------+
 double MathQuantileHypergeometric(const double probability,const double m,const double k,const double n,const bool tail,const bool log_mode,int &error_code)
   {
-//--- check NaN
-   if(!MathIsValidNumber(probability) || !MathIsValidNumber(m) || !MathIsValidNumber(k) || !MathIsValidNumber(n))
+   if(!MathIsValidNumber(m) || !MathIsValidNumber(k) || !MathIsValidNumber(n))
      {
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- m,k,n,x must be integer
-   if(m!=MathRound(m) || k!=MathRound(k) || n!=MathRound(n))
+
+   if(m!=MathRound(m) || k!=MathRound(k) || n!=MathRound(n) || m<0.0 || k<0.0 || n<0.0 || k>m || n>m)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
-//--- m,k,n must be positive
-   if(m<0 || k<0 || n<0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
+
+   double prob=0.0;
+   if(!MathCheckProbabilityInput(probability,tail,log_mode,prob,error_code))
       return QNaN;
-     }
-//--- check ranges
-   if(n>m || k>m)
+
+   int mm=(int)m;
+   int kk=(int)k;
+   int nn=(int)n;
+   int lower=(int)MathMax(0,nn-(mm-kk));
+   int upper=(int)MathMin(nn,kk);
+
+   if(prob==0.0)
+      return (double)lower;
+   if(prob==1.0)
+      return (double)upper;
+
+   int err_code=ERR_OK;
+   int left=lower;
+   int right=upper;
+   while(left<right)
      {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
-     }
-//--- calculate real probability
-   double prob=TailLogProbability(probability,tail,log_mode);
-//--- check probability range
-   if(prob<0.0 || prob>1.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
+      int mid=left+(right-left)/2;
+      double cdf_mid=MathCumulativeDistributionHypergeometric(mid,m,k,n,true,false,err_code);
+      if(err_code!=ERR_OK || !MathIsValidNumber(cdf_mid))
+        {
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
+        }
+      const double q_eps=1e-14;
+      if(cdf_mid+q_eps<prob)
+         left=mid+1;
+      else
+         right=mid;
      }
 
    error_code=ERR_OK;
-//--- check probability
-   if(prob==0)
-      return 0.0;
-   if(prob==1.0)
-      return QPOSINF;
-
-   int max_terms=1000;
-   prob*=1-1000*DBL_EPSILON;
-   double m_k=m-k;
-   double pdf = MathExp(MathBinomialCoefficientLog(m_k,n)-MathBinomialCoefficientLog(m,n));
-   double cdf = pdf;
-   double coef=m_k-n+1;
-   int j=0;
-   while(cdf<prob && j<max_terms)
-     {
-      pdf = pdf*(k-j)*(n-j)/((j+1)*(coef+j));
-      cdf = cdf + pdf;
-      j++;
-     }
-   return j;
+   return (double)left;
   }
 //+------------------------------------------------------------------+
 //| Hypergeometric distribution quantile function (inverse CDF)      |
@@ -488,59 +476,22 @@ double MathQuantileHypergeometric(const double probability,const double m,const 
 //+------------------------------------------------------------------+
 bool MathQuantileHypergeometric(const double &probability[],const double m,const double k,const double n,const bool tail,const bool log_mode,double &result[])
   {
-//--- check NaN
-   if(!MathIsValidNumber(m) || !MathIsValidNumber(k) || !MathIsValidNumber(n))
-      return false;
-//--- m,k,n,x must be integer
-   if(m!=MathRound(m) || k!=MathRound(k) || n!=MathRound(n))
-      return false;
-//--- m,k,n must be positive
-   if(m<0 || k<0 || n<0)
-      return false;
-//--- check ranges
-   if(n>m || k>m)
-      return false;
-
    int data_count=ArraySize(probability);
-   if(data_count==0)
-      return false;
+   if(data_count<=0)
+      return(false);
 
-   int max_terms=1000;
-   double m_k=m-k;
-   double pdf0= MathExp(MathBinomialCoefficientLog(m_k,n)-MathBinomialCoefficientLog(m,n));
-   double coef=m_k-n+1;
+   if(ArrayResize(result,data_count)!=data_count)
+      return(false);
 
-   ArrayResize(result,data_count);
-   for(int i=0; i<data_count; i++)
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      //--- calculate real probability
-      double prob=TailLogProbability(probability[i],tail,log_mode);
-      //--- check probability range
-      if(prob<0.0 || prob>1.0)
-         return false;
-
-      //--- check probability
-      if(prob==0.0)
-         result[i]=0.0;
-      else
-      if(prob==1.0)
-         result[i]=QPOSINF;
-      else
-        {
-         prob*=1-1000*DBL_EPSILON;
-         double pdf = pdf0;
-         double cdf = pdf;
-         int j=0;
-         while(cdf<prob && j<max_terms)
-           {
-            pdf = pdf*(k-j)*(n-j)/((j+1)*(coef+j));
-            cdf = cdf + pdf;
-            j++;
-           }
-         result[i]=j;
-        }
+      result[i]=MathQuantileHypergeometric(probability[i],m,k,n,tail,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+         return(false);
      }
-   return true;
+
+   return(true);
   }
 //+------------------------------------------------------------------+
 //| Hypergeometric distribution quantile function (inverse CDF)      |

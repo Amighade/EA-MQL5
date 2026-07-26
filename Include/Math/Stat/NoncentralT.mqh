@@ -27,7 +27,7 @@ double MathProbabilityDensityNoncentralT(const double x,const double nu,const do
   {
 //--- return T
    if(delta==0.0)
-      return MathProbabilityDensityT(x,nu,error_code);
+      return MathProbabilityDensityT(x,nu,log_mode,error_code);
 //--- check NaN
    if(!MathIsValidNumber(x) || !MathIsValidNumber(nu) || !MathIsValidNumber(delta))
      {
@@ -35,7 +35,7 @@ double MathProbabilityDensityNoncentralT(const double x,const double nu,const do
       return QNaN;
      }
 //--- check nu
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -122,68 +122,30 @@ double MathProbabilityDensityNoncentralT(const double x,const double nu,const do
 //+------------------------------------------------------------------+  
 bool MathProbabilityDensityNoncentralT(const double &x[],const double nu,const double delta,const bool log_mode,double &result[])
   {
-//--- return T
-   if(delta==0.0)
-      return MathProbabilityDensityT(x,nu,log_mode,result);
-//--- check NaN
    if(!MathIsValidNumber(nu) || !MathIsValidNumber(delta))
       return false;
-//--- check nu
-   if(nu!=MathRound(nu) || nu<=0.0)
+
+   if(nu<=0.0)
       return false;
 
    int data_count=ArraySize(x);
-   if(data_count==0)
+   if(data_count<=0)
       return false;
-//--- common factors
-   double nu_1=nu+1.0;
-   double nu_1_half=nu_1*0.5;
-   double log_nu=MathLog(nu);
-   double factor1=MathExp(-0.5*(MathLog(M_PI)+log_nu)-(delta*delta)*0.5-MathGammaLog(nu*0.5)+nu_1_half*log_nu);
-   double factor_delta=delta*M_SQRT2;
-   const int max_terms=500;
 
-   int error_code=0;
-   ArrayResize(result,data_count);
-   for(int i=0; i<data_count; i++)
+   if(ArrayResize(result,data_count)!=data_count)
+      return false;
+
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      double x_arg=x[i];
-
-      if(!MathIsValidNumber(x_arg))
+      if(!MathIsValidNumber(x[i]))
          return false;
 
-      double nu_xx=nu+x_arg*x_arg;
-      double log_nu_xx=MathLog(nu_xx);
-      double factor2=MathExp(-nu_1_half*log_nu_xx);
-      //---
-      double pwr=1.0;
-      double pwr_factor=x_arg*factor_delta;
-      double pwr_nuxx=1.0;
-      double pwr_nuxx_factor=1.0/MathSqrt(nu_xx);
-      double pwr_gamma=1.0;
-      int    j=0;
-      double pdf=0.0;
-      while(j<max_terms)
-        {
-         if(j>0)
-           {
-            pwr_nuxx*=pwr_nuxx_factor;
-            pwr_gamma/=j;
-            pwr*=pwr_factor;
-           }
-         double t=pwr*pwr_gamma*pwr_nuxx*MathGamma((nu_1+j)*0.5);
-         pdf+=t;
-         //--- check precision
-         if((t/(pdf+10E-10))<10E-20)
-            break;
-         j++;
-        }
-      //--- check convergence
-      if(j<max_terms)
-         result[i]=TailLogValue(factor1*factor2*pdf,true,log_mode);
-      else
+      result[i]=MathProbabilityDensityNoncentralT(x[i],nu,delta,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
          return false;
      }
+
    return true;
   }
 //+------------------------------------------------------------------+
@@ -236,7 +198,7 @@ double MathCumulativeDistributionNoncentralT(const double x,const double nu,cons
   {
 //--- return T
    if(delta==0.0)
-      return MathCumulativeDistributionT(x,nu,error_code);
+      return MathCumulativeDistributionT(x,nu,tail,log_mode,error_code);
 //--- check NaN
    if(!MathIsValidNumber(x) || !MathIsValidNumber(nu) || !MathIsValidNumber(delta))
      {
@@ -244,18 +206,12 @@ double MathCumulativeDistributionNoncentralT(const double x,const double nu,cons
       return QNaN;
      }
 //--- check nu (must be positive integer)
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
-//--- special case
-   if(nu==1.0)
-     {
-      error_code=ERR_OK;
-      return TailLogValue(0.5+MathArctan(x)*M_1_PI,tail,log_mode);
-     }
-
+//--- successful validation
    error_code=ERR_OK;
 
 //--- error tolerance
@@ -419,153 +375,30 @@ double MathCumulativeDistributionNoncentralT(const double x,const double nu,cons
 //+------------------------------------------------------------------+
 bool MathCumulativeDistributionNoncentralT(const double &x[],const double nu,const double delta,const bool tail,const bool log_mode,double &result[])
   {
-//--- return T
-   if(delta==0.0)
-      return MathCumulativeDistributionT(x,nu,tail,log_mode,result);
-//--- check NaN
    if(!MathIsValidNumber(nu) || !MathIsValidNumber(delta))
       return false;
 
-//--- check nu (must be positive integer)
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
       return false;
 
    int data_count=ArraySize(x);
-   if(data_count==0)
+   if(data_count<=0)
       return false;
 
-   ArrayResize(result,data_count);
-//--- special case
-   if(nu==1.0)
+   if(ArrayResize(result,data_count)!=data_count)
+      return false;
+
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      for(int i=0; i<data_count; i++)
-        {
-         double x_arg=x[i];
-         if(!MathIsValidNumber(x_arg))
-            return false;
-         result[i]=TailLogValue(0.5+MathArctan(x_arg)*M_1_PI,tail,log_mode);
-        }
-      return true;
-     }
-
-   int err_code=0;
-//--- compute the normal cdf at (-del):
-   double cdf_normal=MathMin(MathCumulativeDistributionNormal(-delta,0,1,err_code),1.0);
-//--- error tolerance
-   const double errtol=10E-25;
-//--- maximum number of iterations
-   const int max_iterations=1000;
-
-   for(int i=0; i<data_count; i++)
-     {
-      double x_arg=x[i];
-
-      if(!MathIsValidNumber(x_arg))
+      if(!MathIsValidNumber(x[i]))
          return false;
 
-      double xx,del;
-      double ptermf,qtermf,ptermb,qtermb,error;
-      //--- if t<0, then the transformation in (3.2) must be used; 
-      if(x_arg<0.0)
-        {
-         xx=-x_arg;
-         del=-delta;
-        }
-      else
-        {
-         xx=x_arg;
-         del=delta;
-        }
-
-      if(xx==0.0)
-         result[i]=TailLogValue(cdf_normal,tail,log_mode);
-      else
-        {
-         double y=xx*xx/(nu+xx*xx);
-         double dels=0.5*del*del;
-         //--- k = integral part of (dels)
-         int k=(int)dels;
-         double a=k+0.5;
-         double c=k+1.0;
-         double b=0.5*nu;
-         //--- initialization to compute the Pk's:
-         double pkf = MathExp(-dels+k*MathLog(dels)-MathGammaLog(k+1.0));
-         double pkb = pkf;
-         //--- initialization to compute the Qk's:
-         double qkf = MathExp(-dels+k*MathLog(dels)-MathGammaLog(k+1.5));
-         double qkb = qkf;
-         //--- compute the incomplete beta function associated with the Pk:
-         //--- pbetaf = beta distribution at (y; a; b)
-         double pbetaf=MathBetaIncomplete(y,a,b);
-         double pbetab=pbetaf;
-         //--- compute the incomplete beta function associated with the Qk:
-         //--- qbetaf = beta distribution at (y; c; b)
-         double qbetaf=MathBetaIncomplete(y,c,b);
-         double qbetab=qbetaf;
-         //--- initialization to compute the incomplete beta functions associated with the Pi's recursively:
-         double pgamf=MathExp(MathGammaLog(a+b-1.0)-MathGammaLog(a)-MathGammaLog(b)+(a-1.0)*MathLog(y)+b*MathLog(1.0-y));
-         double pgamb=pgamf*y*(a+b-1.0)/a;
-         //--- initialization to compute the incomplete beta functions associated with the Qi's recursively:
-         double qgamf=MathExp(MathGammaLog(c+b-1.0)-MathGammaLog(c)-MathGammaLog(b)+(c-1.0)*MathLog(y)+b*MathLog(1.0-y));
-         double qgamb=qgamf*y*(c+b-1.0)/c;
-         //--- compute the remainder of the Poisson probabilities:
-         double rempois=1.0-pkf;
-         double delosq2=del/M_SQRT2;
-         double sum=pkf*pbetaf+delosq2*qkf*qbetaf;
-         double cons=0.5*(1.0+0.5*MathAbs(delta));
-         int j=0;
-         for(;;)
-           {
-            j++;
-            pgamf*=y*(a+b+j-2.0)/(a+j-1.0);
-            pbetaf-=pgamf;
-            pkf*=dels/(k+j);
-            ptermf=pkf*pbetaf;
-            qgamf*=y*(c+b+j-2.0)/(c+j-1.0);
-            qbetaf-=qgamf;
-            qkf*=dels/(k+j+0.5);
-            qtermf=qkf*qbetaf;
-            double term=ptermf+delosq2*qtermf;
-            sum+=term;
-            error=rempois*cons*pbetaf;
-            rempois-=pkf;
-            //--- do forward and backward computations k times or until convergence:
-            if(j<=k)
-              {
-               pgamb*=(a-j+1.0)/(y*(a+b-j));
-               pbetab+=pgamb;
-               pkb=(k-j+1.0)*pkb/dels;
-               ptermb=pkb*pbetab;
-               qgamb*=(c-j+1.0)/(y*(c+b-j));
-               qbetab+=qgamb;
-               qkb=(k-j+1.5)*qkb/dels;
-               qtermb=qkb*qbetab;
-               term=ptermb+delosq2*qtermb;
-               sum+=term;
-               rempois-=pkb;
-               if(rempois<=errtol || j>=max_iterations)
-                  break;
-              }
-            else
-              {
-               if(error<=errtol || j>=max_iterations)
-                  break;
-              }
-           }
-         //--- check convergence   
-         if(j<max_iterations)
-           {
-            double cdf=0.5*sum+cdf_normal;
-            //--- if x is negative
-            if(x_arg<0)
-               cdf=1.0-cdf;
-            //--- take into account round-off errors for probability
-            result[i]=TailLogValue(MathMin(cdf,1.0),tail,log_mode);
-           }
-         else
-            return false;
-        }
+      result[i]=MathCumulativeDistributionNoncentralT(x[i],nu,delta,tail,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+         return false;
      }
+
    return true;
   }
 //+------------------------------------------------------------------+
@@ -609,175 +442,134 @@ bool MathCumulativeDistributionNoncentralT(const double &x[],const double nu,con
 //+------------------------------------------------------------------+
 double MathQuantileNoncentralT(const double probability,const double nu,const double delta,const bool tail,const bool log_mode,int &error_code)
   {
-//--- return T if delta==0
    if(delta==0.0)
-      return MathQuantileT(probability,nu,error_code);
-//--- check NaN
+      return MathQuantileT(probability,nu,tail,log_mode,error_code);
+
    if(!MathIsValidNumber(nu) || !MathIsValidNumber(delta))
      {
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- check nu
-   if(nu!=MathRound(nu) || nu<0.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
-     }
-//--- check delta
-   if(delta<0.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
-     }
-//--- calculate real probability
-   double prob=TailLogProbability(probability,tail,log_mode);
 
-//--- check probability range
-   if(prob<0.0 || prob>1.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
 
-   if(prob==0.0 || prob==1.0)
-     {
-      error_code=ERR_RESULT_INFINITE;
-      if(prob==0.0)
-         return QNEGINF;
-      else
-         return QPOSINF;
-     }
-//--- coefficients for pdf and cdf
-   double sqr_delta_half=delta*delta*0.5;
-   double nu_half=nu*0.5;
-   double log_sqr_delta_half=MathLog(sqr_delta_half);
-   double exp_sqr_delta_half=MathExp(-sqr_delta_half);
-   double sqrt_sqr_delta_half=MathSqrt(sqr_delta_half);
-   double nu_1=nu+1.0;
-   double nu_1_half=nu_1*0.5;
-   double log_nu=MathLog(nu);
-   double factor1=MathExp(-0.5*(MathLog(M_PI)+log_nu)-sqr_delta_half-MathGammaLog(nu*0.5)+nu_1_half*log_nu);
+   double prob=0.0;
+   if(!MathCheckProbabilityInput(probability,tail,log_mode,prob,error_code))
+      return QNaN;
 
-//--- probability for -delta
-   int err_code=0;
-   double p0=MathCumulativeDistributionNormal(-delta,0.0,1.0,err_code);
-//---
    error_code=ERR_OK;
-   double precision=10E-20;
-   const int max_iterations=150;
-   int iterations=0;
-   double x=0.5;
-   double h=1.0;
-   double h_min=precision;
-   const int max_terms=500;
-//--- Newton iterations
-   while(iterations<max_iterations)
-     {
-      //--- check convergence 
-      if((MathAbs(h)>h_min && MathAbs(h)>MathAbs(h_min*x))==false)
-         break;
 
-      //--- calculate pdf
-      double x_arg_sqr=x*x;
-      double nu_xx=nu+x_arg_sqr;
-      double log_nu_xx=MathLog(nu_xx);
-      double factor2=MathExp(-nu_1_half*log_nu_xx);
-      double pwr=1.0;
-      double pwr_factor=x*delta*M_SQRT2;
-      double pwr_nuxx=1.0;
-      double pwr_nuxx_factor=1.0/MathSqrt(nu_xx);
-      double pwr_gamma=1.0;
-      int    j=0;
-      double pdf=0.0;
-      while(j<max_terms)
-        {
-         if(j>0)
-           {
-            pwr_nuxx*=pwr_nuxx_factor;
-            pwr_gamma/=j;
-            pwr*=pwr_factor;
-           }
-         double t=pwr*pwr_gamma*pwr_nuxx*MathGamma((nu_1+j)*0.5);
-         pdf+=t;
-         //--- check precision
-         if((t/(pdf+10E-10))<10E-20)
-            break;
-         j++;
-        }
-      //--- check convergence
-      if(j>max_terms)
-         return false;
-      pdf=factor1*factor2*pdf;
+   if(prob<=0.0)
+      return QNEGINF;
 
-      //--- calculate cdf
-      double t=(x*x)/(nu+x*x);
-      double sum1 = 0.0;
-      double sum2 = 0.0;
-      //---
-      double pwr_coef1=1.0;
-      double pwr_coef2=1.0;
-      double fact=1.0;
-      j=0;
-      if(x!=0)
-        {
-         while(j<max_terms)
-           {
-            if(j>0)
-              {
-               pwr_coef1*=sqrt_sqr_delta_half;
-               pwr_coef2*=sqr_delta_half;
-               fact/=j;
-              }
-            double coef=1.0/MathGamma(j*0.5+1.0);
-            //--- term1: t between 0 and x
-            double t1=pwr_coef1*coef*MathBetaIncomplete(t,(j+1.0)*0.5,nu_half);
-            sum1+=t1;
-            //--- term2: t between x and -x
-            double t2=pwr_coef2*fact*MathBetaIncomplete(t,(j+0.5),nu_half);
-            sum2+=t2;
-            //--- check precision
-            if((MathAbs(t1/(sum1+10E-10))<precision) && (MathAbs(t2/(sum2+10E-10))<precision))
-               break;
-            j++;
-           }
-        }
-      //--- check convergence   
-      if(j>max_terms)
-         return false;
+   if(prob>=1.0)
+      return QPOSINF;
 
-      //--- compute probability for positive x
-      double cdf=p0+exp_sqr_delta_half*sum1*0.5;
-      //--- compute probability for negative x
-      if(x<0)
-         cdf=cdf-exp_sqr_delta_half*sum2;
-      //--- take into account round-off errors for probability
-      cdf=MathMin(cdf,1.0);
+   int err_code=ERR_OK;
+   double cdf0=MathCumulativeDistributionNoncentralT(0.0,nu,delta,true,false,err_code);
 
-      //--- calculate ratio
-      h=(cdf-prob)/pdf;
-
-      double x_new=x-h;
-      if(x_new<0.0)
-         x_new=x*0.1;
-      else
-      if(x_new>1.0)
-         x_new=1.0-(1.0-x)*0.1;
-
-      if(MathAbs(x_new-x)<10E-15)
-         break;
-
-      x=x_new;
-      iterations++;
-     }
-//--- check convergence
-   if(iterations<max_iterations)
-      return x;
-   else
+   if(err_code!=ERR_OK || !MathIsValidNumber(cdf0))
      {
       error_code=ERR_NON_CONVERGENCE;
       return QNaN;
      }
+
+   //--- for very small probabilities p may differ from CDF(0) only at the rounding level
+   if(MathAbs(prob-cdf0)<=1e-18)
+      return 0.0;
+
+   double lo=0.0;
+   double hi=0.0;
+
+   const int max_expand=300;
+
+   if(prob<cdf0)
+     {
+      hi=0.0;
+      lo=-1.0;
+
+      for(int i=0;i<max_expand;i++)
+        {
+         err_code=ERR_OK;
+         double cdf_lo=MathCumulativeDistributionNoncentralT(lo,nu,delta,true,false,err_code);
+
+         if(err_code==ERR_OK && MathIsValidNumber(cdf_lo) && cdf_lo<=prob)
+            break;
+
+         lo*=2.0;
+        }
+
+      err_code=ERR_OK;
+      double check_lo=MathCumulativeDistributionNoncentralT(lo,nu,delta,true,false,err_code);
+      if(err_code!=ERR_OK || !MathIsValidNumber(check_lo) || check_lo>prob)
+        {
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
+        }
+     }
+   else
+     {
+      lo=0.0;
+      hi=1.0;
+
+      for(int i=0;i<max_expand;i++)
+        {
+         err_code=ERR_OK;
+         double cdf_hi=MathCumulativeDistributionNoncentralT(hi,nu,delta,true,false,err_code);
+
+         if(err_code==ERR_OK && MathIsValidNumber(cdf_hi) && cdf_hi>=prob)
+            break;
+
+         hi*=2.0;
+        }
+
+      err_code=ERR_OK;
+      double check_hi=MathCumulativeDistributionNoncentralT(hi,nu,delta,true,false,err_code);
+      if(err_code!=ERR_OK || !MathIsValidNumber(check_hi) || check_hi<prob)
+        {
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
+        }
+     }
+
+   const int max_iterations=400;
+   const double abs_tol=1e-14;
+   const double rel_tol=1e-14;
+
+   for(int i=0;i<max_iterations;i++)
+     {
+      double mid=0.5*(lo+hi);
+
+      err_code=ERR_OK;
+      double cdf_mid=MathCumulativeDistributionNoncentralT(mid,nu,delta,true,false,err_code);
+
+      if(err_code!=ERR_OK || !MathIsValidNumber(cdf_mid))
+        {
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
+        }
+
+      if(cdf_mid<prob)
+         lo=mid;
+      else
+         hi=mid;
+
+      double width=hi-lo;
+      double scale=MathMax(1.0,MathMax(MathAbs(lo),MathAbs(hi)));
+
+      if(width<=abs_tol || width<=rel_tol*scale)
+        {
+         error_code=ERR_OK;
+         return 0.5*(lo+hi);
+        }
+     }
+
+   error_code=ERR_OK;
+   return 0.5*(lo+hi);
   }
 //+------------------------------------------------------------------+
 //| Noncentral T distribution quantile function (inverse CDF)        |
@@ -820,176 +612,142 @@ double MathQuantileNoncentralT(const double probability,const double nu,const do
 //+------------------------------------------------------------------+
 bool MathQuantileNoncentralT(const double &probability[],const double nu,const double delta,const bool tail,const bool log_mode,double &result[])
   {
-//--- return T if delta==0
-   if(delta==0.0)
-      return MathQuantileT(probability,nu,tail,log_mode,result);
-//--- check NaN
    if(!MathIsValidNumber(nu) || !MathIsValidNumber(delta))
       return false;
-//--- check nu
-   if(nu!=MathRound(nu) || nu<0.0)
-      return false;
-//--- check delta
-   if(delta<0.0)
+
+   if(nu<=0.0)
       return false;
 
    int data_count=ArraySize(probability);
-   if(data_count==0)
+   if(data_count<=0)
       return false;
 
-//--- coefficients for pdf and cdf
-   double sqr_delta_half=delta*delta*0.5;
-   double nu_half=nu*0.5;
-   double log_sqr_delta_half=MathLog(sqr_delta_half);
-   double exp_sqr_delta_half=MathExp(-sqr_delta_half);
-   double sqrt_sqr_delta_half=MathSqrt(sqr_delta_half);
-   double nu_1=nu+1.0;
-   double nu_1_half=nu_1*0.5;
-   double log_nu=MathLog(nu);
-   double factor1=MathExp(-0.5*(MathLog(M_PI)+log_nu)-sqr_delta_half-MathGammaLog(nu*0.5)+nu_1_half*log_nu);
+   if(ArrayResize(result,data_count)!=data_count)
+      return false;
 
-//--- probability for -delta
-   int err_code=0;
-   double p0=MathCumulativeDistributionNormal(-delta,0.0,1.0,err_code);
-//---
-   double precision=10E-20;
-   double h_min=precision;
-   const int max_iterations=50;
-   const int max_terms=500;
-
-   ArrayResize(result,data_count);
-   for(int i=0; i<data_count; i++)
+   for(int i=0;i<data_count;i++)
      {
-      //--- calculate real probability
-      double prob=TailLogProbability(probability[i],tail,log_mode);
-
-      //--- check probability range
-      if(prob<0.0 || prob>1.0)
+      if(!MathIsValidNumber(probability[i]) && !(log_mode && probability[i]==QNEGINF))
          return false;
 
-      if(prob==0.0 || prob==1.0)
+      double p=0.0;
+
+      if(log_mode)
         {
-         if(prob==0.0)
-            result[i]=QNEGINF;
-         else
-            result[i]=QPOSINF;
+         if(probability[i]>0.0)
+            return false;
+
+         double ep=(probability[i]==QNEGINF ? 0.0 : MathExp(probability[i]));
+         p=(tail ? ep : 1.0-ep);
         }
       else
         {
-         double x=0.5;
-         double h=1.0;
-         int iterations=0;
-         //--- Newton iterations
-         while(iterations<max_iterations)
-           {
-            //--- check convergence 
-            if((MathAbs(h)>h_min && MathAbs(h)>MathAbs(h_min*x))==false)
-               break;
-
-            //--- calculate pdf and cdf
-            //double cdf=MathCumulativeDistributionNoncentralT(x,nu,delta,err_code);
-            //double pdf=MathProbabilityDensityNoncentralT(x,nu,delta,err_code);
-
-            //--- calculate pdf
-            double x_arg_sqr=x*x;
-            double nu_xx=nu+x_arg_sqr;
-            double log_nu_xx=MathLog(nu_xx);
-            double factor2=MathExp(-nu_1_half*log_nu_xx);
-            double pwr=1.0;
-            double pwr_factor=x*delta*M_SQRT2;
-            double pwr_nuxx=1.0;
-            double pwr_nuxx_factor=1.0/MathSqrt(nu_xx);
-            double pwr_gamma=1.0;
-            int    j=0;
-            double pdf=0.0;
-            while(j<max_terms)
-              {
-               if(j>0)
-                 {
-                  pwr_nuxx*=pwr_nuxx_factor;
-                  pwr_gamma/=j;
-                  pwr*=pwr_factor;
-                 }
-               double t=pwr*pwr_gamma*pwr_nuxx*MathGamma((nu_1+j)*0.5);
-               pdf+=t;
-               //--- check precision
-               if((t/(pdf+10E-10))<10E-20)
-                  break;
-               j++;
-              }
-            //--- check convergence
-            if(j>max_terms)
-               return false;
-
-            pdf=factor1*factor2*pdf;
-
-            //--- calculate cdf
-            double t=(x*x)/(nu+x*x);
-            double sum1 = 0.0;
-            double sum2 = 0.0;
-            //---
-            double pwr_coef1=1.0;
-            double pwr_coef2=1.0;
-            double fact=1.0;
-            j=0;
-            if(x!=0)
-              {
-               while(j<max_terms)
-                 {
-                  if(j>0)
-                    {
-                     pwr_coef1*=sqrt_sqr_delta_half;
-                     pwr_coef2*=sqr_delta_half;
-                     fact/=j;
-                    }
-                  double coef=1.0/MathGamma(j*0.5+1.0);
-                  //--- term1: t between 0 and x
-                  double t1=pwr_coef1*coef*MathBetaIncomplete(t,(j+1.0)*0.5,nu_half);
-                  sum1+=t1;
-                  //--- term2: t between x and -x
-                  double t2=pwr_coef2*fact*MathBetaIncomplete(t,(j+0.5),nu_half);
-                  sum2+=t2;
-                  //--- check precision
-                  if((MathAbs(t1/(sum1+10E-10))<precision) && (MathAbs(t2/(sum2+10E-10))<precision))
-                     break;
-                  j++;
-                 }
-              }
-            //--- check convergence   
-            if(j>max_terms)
-               return false;
-
-            //--- compute probability for positive x
-            double cdf=p0+exp_sqr_delta_half*sum1*0.5;
-            //--- compute probability for negative x
-            if(x<0)
-               cdf=cdf-exp_sqr_delta_half*sum2;
-            //--- take into account round-off errors for probability
-            cdf=MathMin(cdf,1.0);
-
-            //--- calculate ratio
-            h=(cdf-prob)/pdf;
-
-            double x_new=x-h;
-            if(x_new<0.0)
-               x_new=x*0.1;
-            else
-            if(x_new>1.0)
-               x_new=1.0-(1.0-x)*0.1;
-
-            if(MathAbs(x_new-x)<10E-15)
-               break;
-
-            x=x_new;
-            iterations++;
-           }
-         //--- check convergence
-         if(iterations<max_iterations)
-            result[i]=x;
-         else
+         if(probability[i]<0.0 || probability[i]>1.0)
             return false;
+
+         p=(tail ? probability[i] : 1.0-probability[i]);
         }
+
+      if(p<=0.0)
+        {
+         result[i]=QNEGINF;
+         continue;
+        }
+
+      if(p>=1.0)
+        {
+         result[i]=QPOSINF;
+         continue;
+        }
+
+      int error_code=ERR_OK;
+
+      double q=MathQuantileNoncentralT(p,nu,delta,true,false,error_code);
+
+      if(error_code==ERR_OK && MathIsValidNumber(q))
+        {
+         result[i]=q;
+         continue;
+        }
+
+      //--- fallback from x=0, not from delta
+      int err=ERR_OK;
+      double cdf0=MathCumulativeDistributionNoncentralT(0.0,nu,delta,true,false,err);
+
+      if(err!=ERR_OK || !MathIsValidNumber(cdf0))
+         return false;
+
+      //--- important case p is almost equal to CDF(0)
+      if(MathAbs(p-cdf0)<=1e-18)
+        {
+         result[i]=0.0;
+         continue;
+        }
+
+      double lo=0.0;
+      double hi=0.0;
+
+      if(p<cdf0)
+        {
+         hi=0.0;
+         lo=-1.0;
+
+         for(int k=0;k<300;k++)
+           {
+            err=ERR_OK;
+            double cdf_lo=MathCumulativeDistributionNoncentralT(lo,nu,delta,true,false,err);
+
+            if(err==ERR_OK && MathIsValidNumber(cdf_lo) && cdf_lo<=p)
+               break;
+
+            lo*=2.0;
+           }
+        }
+      else
+        {
+         lo=0.0;
+         hi=1.0;
+
+         for(int k=0;k<300;k++)
+           {
+            err=ERR_OK;
+            double cdf_hi=MathCumulativeDistributionNoncentralT(hi,nu,delta,true,false,err);
+
+            if(err==ERR_OK && MathIsValidNumber(cdf_hi) && cdf_hi>=p)
+               break;
+
+            hi*=2.0;
+           }
+        }
+
+      for(int it=0;it<400;it++)
+        {
+         double mid=0.5*(lo+hi);
+
+         err=ERR_OK;
+         double cdf_mid=MathCumulativeDistributionNoncentralT(mid,nu,delta,true,false,err);
+
+         if(err!=ERR_OK || !MathIsValidNumber(cdf_mid))
+            return false;
+
+         if(cdf_mid<p)
+            lo=mid;
+         else
+            hi=mid;
+
+         double width=hi-lo;
+         double scale=MathMax(1.0,MathMax(MathAbs(lo),MathAbs(hi)));
+
+         if(width<=1e-14 || width<=1e-14*scale)
+            break;
+        }
+
+      result[i]=0.5*(lo+hi);
+
+      if(!MathIsValidNumber(result[i]))
+         return false;
      }
+
    return true;
   }
 //+------------------------------------------------------------------+
@@ -1038,18 +796,11 @@ double MathRandomNoncentralT(const double nu,const double delta,int &error_code)
       return QNaN;
      }
 //--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
-//--- check delta
-   if(delta<0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
-     }
-
    error_code=ERR_OK;
    int err_code=0;
 //--- generate normal and chisquare random variables 
@@ -1085,12 +836,8 @@ bool MathRandomNoncentralT(const double nu,const double delta,const int data_cou
    if(!MathIsValidNumber(nu) || !MathIsValidNumber(delta))
       return false;
 //--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
       return false;
-//--- check delta
-   if(delta<0)
-      return false;
-
    int err_code=0;
 //--- prepare output array and calculate random values
    ArrayResize(result,data_count);
@@ -1146,18 +893,11 @@ double MathMomentsNoncentralT(const double nu,const double delta,double &mean,do
       return false;
      }
 //--- check nu
-   if(nu!=MathRound(nu) || nu<0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return false;
      }
-//--- check delta
-   if(delta<0.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return false;
-     }
-
    error_code=ERR_OK;
 //--- calculate moments
 //--- mean
@@ -1189,4 +929,4 @@ double MathMomentsNoncentralT(const double nu,const double delta,double &mean,do
 //--- successful
    return true;
   }
-//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+ 

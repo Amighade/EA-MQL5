@@ -32,7 +32,7 @@ double MathProbabilityDensityF(const double x,const double nu1,const double nu2,
       return QNaN;
      }
 //--- check arguments
-   if(nu1!=MathRound(nu1) || nu1!=MathRound(nu1) || nu1<1 || nu2<1)
+   if(nu1<=0.0 || nu2<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -91,7 +91,7 @@ bool MathProbabilityDensityF(const double &x[],const double nu1,const double nu2
    if(!MathIsValidNumber(nu1) || !MathIsValidNumber(nu2))
       return false;
 //--- check arguments
-   if(nu1!=MathRound(nu1) || nu1!=MathRound(nu1) || nu1<1 || nu2<1)
+   if(nu1<=0.0 || nu2<=0.0)
       return false;
 
    int data_count=ArraySize(x);
@@ -165,7 +165,7 @@ double MathCumulativeDistributionF(const double x,const double nu1,const double 
       return QNaN;
      }
 //--- check arguments
-   if(nu1!=MathRound(nu1) || nu2!=MathRound(nu2) || nu1<=0 || nu2<=0)
+   if(nu1<=0.0 || nu2<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -222,7 +222,7 @@ bool MathCumulativeDistributionF(const double &x[],const double nu1,const double
    if(!MathIsValidNumber(nu1) || !MathIsValidNumber(nu2))
       return false;
 //--- check arguments
-   if(nu1!=MathRound(nu1) || nu2!=MathRound(nu2) || nu1<=0 || nu2<=0)
+   if(nu1<=0.0 || nu2<=0.0)
       return false;
 
    int data_count=ArraySize(x);
@@ -294,7 +294,7 @@ double MathQuantileF(const double probability,const double nu1,const double nu2,
       return QNaN;
      }
 //--- check arguments
-   if(nu1!=MathRound(nu1) || nu2!=MathRound(nu2) || nu1<=0 || nu2<=0)
+   if(nu1<=0.0 || nu2<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -368,7 +368,7 @@ bool MathQuantileF(const double &probability[],const double nu1,const double nu2
    if(!MathIsValidNumber(nu1) || !MathIsValidNumber(nu2))
       return false;
 //--- check arguments
-   if(nu1!=MathRound(nu1) || nu2!=MathRound(nu2) || nu1<=0 || nu2<=0)
+   if(nu1<=0.0 || nu2<=0.0)
       return false;
 
    int data_count=ArraySize(probability);
@@ -443,7 +443,7 @@ double MathRandomF(const double nu1,const double nu2,int &error_code)
       return QNaN;
      }
 //--- check arguments
-   if(nu1!=MathRound(nu1) || nu2!=MathRound(nu2) || nu1<=0 || nu2<=0)
+   if(nu1<=0.0 || nu2<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -484,7 +484,7 @@ bool MathRandomF(const double nu1,const double nu2,const int data_count,double &
    if(!MathIsValidNumber(nu1) || !MathIsValidNumber(nu2))
       return false;
 //--- check arguments
-   if(nu1!=MathRound(nu1) || nu2!=MathRound(nu2) || nu1<=0 || nu2<=0)
+   if(nu1<=0.0 || nu2<=0.0)
       return false;
 
 //--- prepare output array and calculate random values
@@ -541,7 +541,7 @@ bool MathMomentsF(const double nu1,const double nu2,double &mean,double &varianc
       return false;
      }
 //--- check arguments
-   if(nu1!=MathRound(nu1) || nu1!=MathRound(nu1) || nu1<1 || nu2<1)
+   if(nu1<=0.0 || nu2<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return false;

@@ -304,7 +304,7 @@ bool MathCumulativeDistributionBeta(const double &x[],const double a,const doubl
 double MathQuantileBeta(const double probability,const double a,const double b,const bool tail,const bool log_mode,int &error_code)
   {
 //--- check parameters
-   if(!MathIsValidNumber(probability) || !MathIsValidNumber(a) || !MathIsValidNumber(b))
+   if(!MathIsValidNumber(a) || !MathIsValidNumber(b))
      {
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
@@ -315,70 +315,49 @@ double MathQuantileBeta(const double probability,const double a,const double b,c
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
-
-//--- calculate real probability
-   double prob=TailLogProbability(probability,tail,log_mode);
-//--- check probability range
-   if(prob<0.0 || prob>1.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
+//--- calculate probability
+   double prob=0.0;
+   if(!MathCheckProbabilityInput(probability,tail,log_mode,prob,error_code))
       return QNaN;
-     }
 
-   error_code=ERR_OK;
 //--- check probabilty
    if(prob==0.0)
       return 0.0;
    if(prob==1.0)
       return 1.0;
 
-   const double eps=10e-16;
-//--- set h and h_min
-   double h=1.0;
-   double h_min=MathSqrt(eps);
+   int err_code=ERR_OK;
+   double lo=0.0;
+   double hi=1.0;
+   const int max_iterations=200;
+   const double abs_tol=1e-14;
+   const double rel_tol=1e-14;
 
-//--- initial x value
-   double x=a/(a+b);
-   if(x==0.0)
-      x=h_min;
-   else
-   if(x==1.0)
-      x=1.0-h_min;
-
-   int err_code=0;
-   const int max_iterations=100;
-   int iterations=0;
-//--- Newton iterations
-   while(iterations<max_iterations)
+   for(int i=0;i<max_iterations;i++)
      {
-      //--- check convergence
-      if(((MathAbs(h)>h_min*MathAbs(x)) && (MathAbs(h)>h_min))==false)
-         break;
-      //--- calculate pdf and cdf
-      double pdf=MathProbabilityDensityBeta(x,a,b,false,err_code);
-      double cdf=MathCumulativeDistributionBeta(x,a,b,true,false,err_code);
-      //--- calculate ratio
-      h=(cdf-prob)/pdf;
+      double mid=0.5*(lo+hi);
+      double cdf=MathCumulativeDistributionBeta(mid,a,b,true,false,err_code);
 
-      double x_new=x-h;
-      //--- check x
-      if(x_new<0.0)
-         x_new=x*0.1;
+      if(err_code!=ERR_OK || !MathIsValidNumber(cdf))
+        {
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
+        }
+
+      if(cdf<prob)
+         lo=mid;
       else
-      if(x_new>1.0)
-         x_new=1.0-(1.0-x)*0.1;
-      x=x_new;
+         hi=mid;
 
-      iterations++;
+      if(MathBisectionConverged(lo,hi,abs_tol,rel_tol))
+        {
+         error_code=ERR_OK;
+         return 0.5*(lo+hi);
+        }
      }
-//--- check convergence
-   if(iterations<max_iterations)
-      return x;
-   else
-     {
-      error_code=ERR_NON_CONVERGENCE;
-      return QNaN;
-     }
+
+   error_code=ERR_OK;
+   return 0.5*(lo+hi);
   }
 //+------------------------------------------------------------------+
 //| Beta distribution quantile function (inverse CDF)                |
@@ -421,87 +400,22 @@ double MathQuantileBeta(const double probability,const double a,const double b,i
 //+------------------------------------------------------------------+ 
 bool MathQuantileBeta(const double &probability[],const double a,const double b,const bool tail,const bool log_mode,double &result[])
   {
-//--- check parameters
-   if(!MathIsValidNumber(a) || !MathIsValidNumber(b))
-      return false;
-//--- a and b must be positive
-   if(a<=0.0 || b<=0.0)
-      return false;
-
    int data_count=ArraySize(probability);
-   if(data_count==0)
-      return false;
+   if(data_count<=0)
+      return(false);
 
-   int error_code=0;
-   ArrayResize(result,data_count);
+   if(ArrayResize(result,data_count)!=data_count)
+      return(false);
 
-   const double eps=10e-16;
-   double h_min=MathSqrt(eps);
-
-   int err_code=0;
-   const int max_iterations=1000;
-   for(int i=0; i<data_count; i++)
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      //--- calculate real probability
-      double prob=TailLogProbability(probability[i],tail,log_mode);
-
-      if(MathIsValidNumber(prob))
-        {
-         //--- check probability range
-         if(prob<0.0 || prob>1.0)
-            return false;
-         //--- check probabilty
-         if(prob==0.0)
-            result[i]=0.0;
-         else
-         if(prob==1.0)
-            result[i]=1.0;
-         else
-           {
-            //--- initial x value
-            double x=a/(a+b);
-            if(x==0.0)
-               x=h_min;
-            else
-            if(x==1.0)
-               x=1.0-h_min;
-
-            double h=1.0;
-            int iterations=0;
-            //--- Newton iterations
-            while(iterations<max_iterations)
-              {
-               //--- check convergence
-               if(((MathAbs(h)>h_min*MathAbs(x)) && (MathAbs(h)>h_min))==false)
-                  break;
-               //--- calculate pdf and cdf
-               double pdf=MathProbabilityDensityBeta(x,a,b,false,err_code);
-               double cdf=MathCumulativeDistributionBeta(x,a,b,true,false,err_code);
-               //--- calculate ratio
-               h=(cdf-prob)/pdf;
-
-               double x_new=x-h;
-               //--- check x
-               if(x_new<0.0)
-                  x_new=x*0.1;
-               else
-               if(x_new>1.0)
-                  x_new=1.0-(1.0-x)*0.1;
-               x=x_new;
-
-               iterations++;
-              }
-            //--- check convergence
-            if(iterations<max_iterations)
-               result[i]=x;
-            else
-               return false;
-           }
-        }
-      else
-         return false;
+      result[i]=MathQuantileBeta(probability[i],a,b,tail,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+         return(false);
      }
-   return true;
+
+   return(true);
   }
 //+------------------------------------------------------------------+
 //| Beta distribution quantile function (inverse CDF)                |

@@ -41,7 +41,7 @@ protected:
    virtual bool      OnHide(void);
    virtual bool      OnMove(void);
    virtual bool      OnResize(void);
-   //--- новые обработчики
+   //--- new handlers
    virtual bool      OnMouseDown(void);
    virtual bool      OnMouseUp(void);
   };

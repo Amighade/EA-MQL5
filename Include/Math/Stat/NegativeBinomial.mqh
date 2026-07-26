@@ -156,7 +156,7 @@ bool MathProbabilityDensityNegativeBinomial(const double &x[],const double r,con
 //| The value of the Negative Binomial cumulative distribution       |
 //| function with parameters r and p, evaluated at x.                |
 //+------------------------------------------------------------------+
-double MathCumulativeDistributionNegativeBinomial(const double x,const double r,double p,const bool tail,const bool log_mode,int error_code)
+double MathCumulativeDistributionNegativeBinomial(const double x,const double r,double p,const bool tail,const bool log_mode,int &error_code)
   {
 //--- check NaN
    if(!MathIsValidNumber(x) || !MathIsValidNumber(r) || !MathIsValidNumber(p))
@@ -216,7 +216,7 @@ double MathCumulativeDistributionNegativeBinomial(const double x,const double r,
 //| The value of the Negative Binomial cumulative distribution       |
 //| function with parameters r and p, evaluated at x.                |
 //+------------------------------------------------------------------+
-double MathCumulativeDistributionNegativeBinomial(const double x,const double r,double p,int error_code)
+double MathCumulativeDistributionNegativeBinomial(const double x,const double r,double p,int &error_code)
   {
    return MathCumulativeDistributionNegativeBinomial(x,r,p,true,false,error_code);
   }
@@ -334,74 +334,81 @@ bool MathCumulativeDistributionNegativeBinomial(const double &x[],const double r
 //+------------------------------------------------------------------+
 double MathQuantileNegativeBinomial(const double probability,const double r,const double p,const bool tail,const bool log_mode,int &error_code)
   {
-//--- check NaN
-   if(!MathIsValidNumber(probability) || !MathIsValidNumber(r) || !MathIsValidNumber(p))
+   if(!MathIsValidNumber(r) || !MathIsValidNumber(p))
      {
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- check arguments
-   if(r!=MathRound(r) || r<1.0 || p<0.0 || p>1.0)
+
+   if(r<=0.0 || p<0.0 || p>1.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
-//--- calculate real probability
-   double prob=TailLogProbability(probability,tail,log_mode);
-//--- check probability range
-   if(prob<0.0 || prob>1.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
+
+   double prob=0.0;
+   if(!MathCheckProbabilityInput(probability,tail,log_mode,prob,error_code))
       return QNaN;
+
+   if(prob==0.0)
+      return 0.0;
+
+   if(p==1.0)
+     {
+      error_code=ERR_OK;
+      return 0.0;
      }
-//--- check cases p=0 and p=1
+   if(p==0.0)
+     {
+      error_code=ERR_RESULT_INFINITE;
+      return QPOSINF;
+     }
    if(prob==1.0)
      {
       error_code=ERR_RESULT_INFINITE;
       return QPOSINF;
      }
-   error_code=ERR_OK;
-   if(prob==0.0)
-      return 0.0;
 
-   int max_terms=1000;
-   int err_code=0;
-//--- factors 
-   double fact1=MathFactorial((int)r-1);
-   double factor_r=1.0/fact1;
-   double power_p_r=MathPowInt(p,int(r))*factor_r;
-   double p1=1.0-p;
-//--- initial factors
-   double factor1=fact1;
-   double factor2=1.0;
-   double factor_p=1.0;
-   double cdf=0.0;
-   int j=0;
-   while(cdf<prob && j<max_terms)
+   int err_code=ERR_OK;
+   int left=0;
+   double mean=r*(1.0-p)/p;
+   double variance=r*(1.0-p)/(p*p);
+   int hi=(int)MathCeil(MathMax(1.0,mean+10.0*MathSqrt(variance+1.0)));
+   double cdf_hi=MathCumulativeDistributionNegativeBinomial(hi,r,p,true,false,err_code);
+
+   const int max_expand=100;
+   int expand=0;
+   while(err_code==ERR_OK && MathIsValidNumber(cdf_hi) && cdf_hi<prob && expand<max_expand)
      {
-      if(j>0)
-        {
-         factor1*=(j+1);
-         factor2*=j;
-         factor_p*=p1;
-        }
-      double pdf=power_p_r*factor1*factor_p/factor2;
-      cdf+=pdf;
-      j++;
+      hi=hi*2+1;
+      cdf_hi=MathCumulativeDistributionNegativeBinomial(hi,r,p,true,false,err_code);
+      expand++;
      }
-//--- check convergence
-   if(j<max_terms)
-     {
-      if(j==0)
-         return 0;
-      else
-         return j-1;
-     }
-   else
+
+   if(err_code!=ERR_OK || !MathIsValidNumber(cdf_hi) || cdf_hi<prob)
      {
       error_code=ERR_NON_CONVERGENCE;
-      return 0;
+      return QNaN;
      }
+
+   int right=hi;
+   while(left<right)
+     {
+      int mid=left+(right-left)/2;
+      double cdf_mid=MathCumulativeDistributionNegativeBinomial(mid,r,p,true,false,err_code);
+      if(err_code!=ERR_OK || !MathIsValidNumber(cdf_mid))
+        {
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
+        }
+      if(cdf_mid<prob)
+         left=mid+1;
+      else
+         right=mid;
+     }
+
+   error_code=ERR_OK;
+   return (double)left;
   }
 //+------------------------------------------------------------------+
 //| Negative Binomial distribution quantile function (inverse CDF)   |
@@ -444,68 +451,22 @@ double MathQuantileNegativeBinomial(const double probability,const double r,cons
 //+------------------------------------------------------------------+
 bool MathQuantileNegativeBinomial(const double &probability[],const double r,const double p,const bool tail,const bool log_mode,double &result[])
   {
-//--- check NaN
-   if(!MathIsValidNumber(r) || !MathIsValidNumber(p))
-      return false;
-//--- check arguments
-   if(r!=MathRound(r) || r<1.0 || p<0.0 || p>1.0)
-      return false;
-
    int data_count=ArraySize(probability);
-   if(data_count==0)
-      return false;
-//--- common factors
-   double fact1=MathFactorial((int)r-1);
-   double factor_r=1.0/fact1;
-   double power_p_r=MathPowInt(p,int(r))*factor_r;
-   double p1=1.0-p;
-   int max_terms=500;
-   ArrayResize(result,data_count);
-   for(int i=0; i<data_count; i++)
+   if(data_count<=0)
+      return(false);
+
+   if(ArrayResize(result,data_count)!=data_count)
+      return(false);
+
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      //--- calculate real probability
-      double prob=TailLogProbability(probability[i],tail,log_mode);
-
-      //--- check probability range
-      if(prob<0.0 || prob>1.0)
-         return false;
-
-      if(prob==0.0)
-         result[i]=0.0;
-      else
-      if(prob==1.0)
-         result[i]=QPOSINF;
-      else
-        {
-         double factor1=fact1;
-         double factor2=1.0;
-         double factor_p=1.0;
-         double cdf=0.0;
-         int j=0;
-         while(cdf<prob && j<max_terms)
-           {
-            if(j>0)
-              {
-               factor1*=(j+1);
-               factor2*=j;
-               factor_p*=p1;
-              }
-            double pdf=power_p_r*factor1*factor_p/factor2;
-            cdf+=pdf;
-            j++;
-           }
-         if(j<max_terms)
-           {
-            if(j==0)
-               result[i]=0;
-            else
-               result[i]=j-1;
-           }
-         else
-            return false;
-        }
+      result[i]=MathQuantileNegativeBinomial(probability[i],r,p,tail,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+         return(false);
      }
-   return true;
+
+   return(true);
   }
 //+------------------------------------------------------------------+
 //| Negative Binomial distribution quantile function (inverse CDF)   |
@@ -541,7 +502,7 @@ bool MathQuantileNegativeBinomial(const double &probability[],const double r,con
 //| Return value:                                                    |
 //| The random value with Negative Binomial distribution.            |
 //+------------------------------------------------------------------+
-double MathRandomNegativeBinomial(const double r,const double p,int error_code)
+double MathRandomNegativeBinomial(const double r,const double p,int &error_code)
   {
 //--- check NaN
    if(!MathIsValidNumber(r) || !MathIsValidNumber(p))

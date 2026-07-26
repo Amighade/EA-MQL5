@@ -142,8 +142,6 @@ void OnTick()
       if(done)
         {
          ResetSLManager(g_state);
-         if(g_state.refillNeeded)
-            CheckAndRefill(g_state);
         }
      }
    
@@ -225,8 +223,6 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       if(done)
         {
          ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
-         if(g_state.refillNeeded)
-            CheckAndRefill(g_state); // inside refill takes priority over outside (handled inside FillOneSide)
         }
       return;
      }
@@ -250,8 +246,6 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       if(done)
         {
          ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
-         if(g_state.refillNeeded)
-            CheckAndRefill(g_state); // inside refill takes priority over outside (handled inside FillOneSide)
         }
       return;
      }
@@ -284,10 +278,10 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    // Brick 1 / Brick 2 — each is a no-op internally if its toggle is off.
    UpdateOppositeGrid(g_state);
    ShiftGrid(g_state);
-   
-   if(InpEnableRefillInside && InpRefillStyle == REFILL_FOLLOW_PRICE)
-      RefillFollowPrice(g_state);
-      
+
+   ProcessInsideRefill(g_state);
+   RefillOutside(g_state);
+
    // Brick 6 — check immediately after a fill too (not just OnTick),
    // so a newly-profitable basket doesn't wait for the next tick to arm.
    ProcessSLManager(g_state);

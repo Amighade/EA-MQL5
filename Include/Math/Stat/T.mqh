@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #include "Math.mqh"
 #include "Gamma.mqh"
-
+#include "Beta.mqh"
 //+------------------------------------------------------------------+
 //| T probability density function (PDF)                             |
 //+------------------------------------------------------------------+
@@ -30,7 +30,7 @@ double MathProbabilityDensityT(const double x,const double nu,const bool log_mod
       return QNaN;
      }
 //--- check nu
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -82,7 +82,7 @@ bool MathProbabilityDensityT(const double &x[],const double nu,const bool log_mo
    if(!MathIsValidNumber(nu))
       return false;
 //--- check nu
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
       return false;
 
    int data_count=ArraySize(x);
@@ -151,7 +151,7 @@ double MathCumulativeDistributionT(const double x,const double nu,const bool tai
       return QNaN;
      }
 //--- check nu (must be positive integer)
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -214,7 +214,7 @@ bool MathCumulativeDistributionT(const double &x[],const double nu,const bool ta
    if(!MathIsValidNumber(nu))
       return false;
 //--- check nu (must be positive integer)
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
       return false;
 
    int data_count=ArraySize(x);
@@ -289,85 +289,72 @@ bool MathCumulativeDistributionT(const double &x[],const double nu,double &resul
 //+------------------------------------------------------------------+
 double MathQuantileT(const double probability,const double nu,const bool tail,const bool log_mode,int &error_code)
   {
-//--- check NaN
-   if(!MathIsValidNumber(probability) || !MathIsValidNumber(nu))
+   if(!MathIsValidNumber(nu))
      {
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- check nu
-   if(nu!=MathRound(nu) || nu<0.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
-     }
-//--- calculate real probability
-   double prob=TailLogProbability(probability,tail,log_mode);
-//--- check probability range
-   if(prob<0.0 || prob>1.0)
+
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
 
-//--- check cases when probability==0 or 1
-   if(prob==0.0 || prob==1.0)
-     {
-      error_code=ERR_RESULT_INFINITE;
-      //---
-      if(prob==0.0)
-         return(QNEGINF);
-      else
-         return(QPOSINF);
-     }
+   double prob=0.0;
+   if(!MathCheckProbabilityInput(probability,tail,log_mode,prob,error_code))
+      return QNaN;
 
-   error_code=ERR_OK;
-//--- special case nu=1
-   if(nu==1.0)
-      return MathTan(M_PI*(prob-0.5));
-//--- special case
+   if(prob==0.0)
+      return QNEGINF;
+   if(prob==1.0)
+      return QPOSINF;
    if(prob==0.5)
       return 0.0;
-//---
-   int    max_iterations=50;
-   int    iterations=0;
-//--- initial values
-   double h=1.0;
-   double h_min=10E-20;
-   double x=0.5;
-   int    err_code=0;
-//--- Newton iterations
-   while(iterations<max_iterations)
+
+   if(nu==1.0)
      {
-      //--- check convegence
-      if((MathAbs(h)>h_min && MathAbs(h)>MathAbs(h_min*x))==false)
-         break;
-      //--- calculate pdf and cdf
-      double pdf=MathProbabilityDensityT(x,nu,err_code);
-      double cdf=MathCumulativeDistributionT(x,nu,err_code);
-      //--- calculate ratio
-      h=(cdf-prob)/pdf;
-      //---
-      double x_new=x-h;
-      //--- check x
-      if(x_new<0.0)
-         x_new=x*0.1;
-      else
-      if(x_new>1.0)
-         x_new=1.0-(1.0-x)*0.1;
-
-      x=x_new;
-
-      iterations++;
+      error_code=ERR_OK;
+      return MathTan(M_PI*(prob-0.5));
      }
-//--- check convergence
-   if(iterations<max_iterations)
-      return x;
-   else
+
+   bool is_lower=(prob<0.5);
+   double p_beta=is_lower ? 2.0*prob : 2.0*(1.0-prob);
+
+   if(p_beta<=0.0)
+     {
+      error_code=ERR_OK;
+      return is_lower ? QNEGINF : QPOSINF;
+     }
+   if(p_beta>=1.0)
+     {
+      error_code=ERR_OK;
+      return 0.0;
+     }
+
+   int beta_err=ERR_OK;
+   double x=MathQuantileBeta(p_beta,nu/2.0,0.5,true,false,beta_err);
+
+   if(beta_err!=ERR_OK || !MathIsValidNumber(x))
      {
       error_code=ERR_NON_CONVERGENCE;
       return QNaN;
      }
+
+   if(x<=0.0)
+     {
+      error_code=ERR_OK;
+      return is_lower ? QNEGINF : QPOSINF;
+     }
+   if(x>=1.0)
+     {
+      error_code=ERR_OK;
+      return 0.0;
+     }
+
+   double t=MathSqrt(nu*(1.0-x)/x);
+   error_code=ERR_OK;
+   return is_lower ? -t : t;
   }
 //+------------------------------------------------------------------+
 //| T distribution quantile function (inverse CDF)                   |
@@ -408,86 +395,22 @@ double MathQuantileT(const double probability,const double nu,int &error_code)
 //+------------------------------------------------------------------+
 bool MathQuantileT(const double &probability[],const double nu,const bool tail,const bool log_mode,double &result[])
   {
-//--- check NaN
-   if(!MathIsValidNumber(nu))
-      return false;
-//--- check nu
-   if(nu!=MathRound(nu) || nu<0.0)
-      return false;
-
    int data_count=ArraySize(probability);
-   if(data_count==0)
-      return false;
+   if(data_count<=0)
+      return(false);
 
-   int error_code=0;
-   ArrayResize(result,data_count);
-   for(int i=0; i<data_count; i++)
+   if(ArrayResize(result,data_count)!=data_count)
+      return(false);
+
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      //--- calculate real probability
-      double prob=TailLogProbability(probability[i],tail,log_mode);
-      //--- check probability range
-      if(prob<0.0 || prob>1.0)
-         return false;
-
-      //--- special case p=0.5
-      if(prob==0.5)
-         result[i]=0.0;
-      else
-      if(prob==0.0)
-         result[i]=QNEGINF;
-      else
-      if(prob==1.0)
-         result[i]=QPOSINF;
-      else
-        {
-         //--- special case nu=1
-         if(nu==1.0)
-            result[i]=MathTan(M_PI*(prob-0.5));
-         else
-           {
-            int    max_iterations=50;
-            int    iterations=0;
-            //--- initial values
-            double h=1.0;
-            double h_min=10E-18;
-            double x=0.5;
-            int    err_code=0;
-            //--- Newton iterations
-            while(iterations<max_iterations)
-              {
-               //--- check convegence     
-               if((MathAbs(h)>h_min && MathAbs(h)>MathAbs(h_min*x))==false)
-                  break;
-               //--- calculate pdf and cdf
-               double pdf=MathProbabilityDensityT(x,nu,err_code);
-               double cdf=MathCumulativeDistributionT(x,nu,err_code);
-               //--- calculate ratio
-               h=(cdf-prob)/pdf;
-               //---
-               double x_new=x-h;
-               //--- check x
-               if(x_new<0.0)
-                  x_new=x*0.1;
-               else
-               if(x_new>1.0)
-                  x_new=1.0-(1.0-x)*0.1;
-                  
-               if (MathAbs(x_new-x)<10E-15)
-               break;
-
-               x=x_new;
-
-               iterations++;
-              }
-            //--- check convergence
-            if(iterations<max_iterations)
-               result[i]=x;
-            else
-               return false;
-           }
-        }
+      result[i]=MathQuantileT(probability[i],nu,tail,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+         return(false);
      }
-   return true;
+
+   return(true);
   }
 //+------------------------------------------------------------------+
 //| T distribution quantile function (inverse CDF)                   |
@@ -521,7 +444,7 @@ bool MathQuantileT(const double &probability[],const double nu,double &result[])
 //| Return value:                                                    |
 //| The random value with T distribution.                            |
 //+------------------------------------------------------------------+
-double MathRandomT(const double nu,int error_code)
+double MathRandomT(const double nu,int &error_code)
   {
 //--- check NaN
    if(!MathIsValidNumber(nu))
@@ -530,7 +453,7 @@ double MathRandomT(const double nu,int error_code)
       return QNaN;
      }
 //--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -575,7 +498,7 @@ bool MathRandomT(const double nu,const int data_count,double &result[])
    if(!MathIsValidNumber(nu))
       return false;
 //--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
       return false;
 
    int error_code=0;
@@ -634,7 +557,7 @@ double MathMomentsT(const double nu,double &mean,double &variance,double &skewne
       return QNaN;
      }
 //--- check nu
-   if(nu!=MathRound(nu) || nu<0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;

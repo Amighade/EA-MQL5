@@ -181,7 +181,6 @@ bool CRadioGroup::AddItem(const string item,const long value)
 //+------------------------------------------------------------------+
 bool CRadioGroup::Value(const long value)
   {
-//--- значение должно присутствовать в наборе
    int total=m_values.Total();
 //---
    for(int i=0;i<total;i++)
@@ -195,7 +194,6 @@ bool CRadioGroup::Value(const long value)
 //+------------------------------------------------------------------+
 bool CRadioGroup::ValueCheck(long value) const
   {
-//--- проверяемое значение не должно дублировать уже существующее
    int total=m_values.Total();
 //---
    for(int i=0;i<total;i++)

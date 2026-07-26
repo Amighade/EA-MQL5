@@ -54,7 +54,7 @@ protected:
    virtual bool      OnHide(void);
    virtual bool      OnMove(void);
    virtual bool      OnChange(void);
-   //--- новые обработчики
+   //--- new event handlers
    virtual bool      OnActivate(void);
    virtual bool      OnDeactivate(void);
    virtual bool      OnMouseDown(void);

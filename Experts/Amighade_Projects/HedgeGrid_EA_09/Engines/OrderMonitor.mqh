@@ -16,7 +16,7 @@
 #include "../Models/GridState.mqh"
 #include "../Utils/DebugLogger.mqh"
 #include "../Utils/TradeUtils.mqh"
-
+#include "../Utils/LevelVisitUtils.mqh"
 //+------------------------------------------------------------------+
 //| Check if this is a direction switch from previous hit            |
 //+------------------------------------------------------------------+
@@ -86,11 +86,16 @@ bool ProcessOrderFill(ulong positionTicket, GridState &state)
       LogCounterUpdate(oldCounter, state.passCounter);
      }
 
+   state.prevHitPrice     = state.lastHitPrice;
+   state.prevHitDirection = state.lastHitDirection;
+ 
    state.lastHitDirection  = hitDirection;
    state.lastHitLot        = lot;
    state.lastHitPrice      = fillPrice;
    state.lastHitTime       = TimeCurrent();
    state.lastHitTicket     = positionTicket;
+
+   RegisterLevelVisit(state, fillPrice, posType == POSITION_TYPE_BUY ? 1 : 0);
 
    // Farthest-hit tracking (Brick 2: SHIFT_FARTHEST_HIT)
    if(posType == POSITION_TYPE_BUY)

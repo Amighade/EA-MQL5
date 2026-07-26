@@ -33,7 +33,7 @@ double MathProbabilityDensityNoncentralChiSquare(const double x,const double nu,
       return QNaN;
      }
 //--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -124,7 +124,7 @@ bool MathProbabilityDensityNoncentralChiSquare(const double &x[],const double nu
    if(!MathIsValidNumber(nu) || !MathIsValidNumber(sigma))
       return false;
 //--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
       return false;
 
    int data_count=ArraySize(x);
@@ -232,7 +232,7 @@ double MathCumulativeDistributionNoncentralChiSquare(const double x,const double
       return QNaN;
      }
 //--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -240,7 +240,7 @@ double MathCumulativeDistributionNoncentralChiSquare(const double x,const double
 
    error_code=ERR_OK;
    if(x<=0.0)
-      return TailLog0(true,log_mode);
+      return TailLog0(tail,log_mode);
 
 //--- prepare parameters
    double cdf=0.0;
@@ -326,7 +326,7 @@ bool MathCumulativeDistributionNoncentralChiSquare(const double &x[],const doubl
    if(!MathIsValidNumber(nu) || !MathIsValidNumber(sigma))
       return false;
 //--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
       return false;
 
    int data_count=ArraySize(x);
@@ -420,148 +420,82 @@ bool MathCumulativeDistributionNoncentralChiSquare(const double &x[],const doubl
 //+------------------------------------------------------------------+
 double MathQuantileNoncentralChiSquare(const double probability,const double nu,const double sigma,const bool tail,const bool log_mode,int &error_code)
   {
-   if(log_mode==true)
-     {
-      if(probability==QNEGINF)
-         return 0.0;
-     }
-//--- check NaN
-   if(!MathIsValidNumber(probability) || !MathIsValidNumber(nu) || !MathIsValidNumber(sigma))
+   if(!MathIsValidNumber(nu) || !MathIsValidNumber(sigma))
      {
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
+
+   if(nu<=0.0 || sigma<0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
 
-//--- calculate real probability
-   double prob=TailLogProbability(probability,tail,log_mode);
-//--- check probability range
-   if(prob<0.0 || prob>1.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
+   double prob=0.0;
+   if(!MathCheckProbabilityInput(probability,tail,log_mode,prob,error_code))
       return QNaN;
-     }
 
-   error_code=ERR_OK;
    if(prob==0.0)
       return 0.0;
-
    if(prob==1.0)
-      return QPOSINF;
-
-   error_code=ERR_OK;
-//--- common factors for pdf and cdf calculation
-   const int max_terms=1000;
-   double lambda=sigma*0.5;
-   double half_nu=nu*0.5;
-   double coef_lambda=MathExp(-lambda);
-   double half_nu_m1=half_nu-1.0;
-   double coef_gamma=1.0/MathGamma(half_nu);
-   double pwr_two2=MathExp(-half_nu*MathLog(2));
-   double pwr_half_num1=(half_nu-1.0);
-//--- prepare values for initial x estimation
-   double x=0.5;
-   double h=1.0;
-   double h_min=10E-10;
-//--- Newton iterations
-   const int max_iterations=50;
-   int iterations=0;
-//   int err_code=0;
-   while(iterations<max_iterations)
      {
-      //--- check convergence
-      if((MathAbs(h)>h_min && MathAbs(h)>MathAbs(h_min*x))==false)
-         break;
-
-      //double pdf=MathProbabilityDensityNoncentralChiSquare(x,nu,sigma,false,err_code);
-      double half_x=x*0.5;
-      double pwr_lambda=1.0;
-      double pwr_two=pwr_two2;
-      double pwr_x=MathPow(x,pwr_half_num1);
-      double fact_mult=1.0;
-      double coef_lambda_x=coef_lambda*MathExp(-half_x);
-      double inv_factor=1.0;
-      //--- calculate density using direct summation
-      int j=0;
-      double pdf=0;
-      while(j<max_terms)
-        {
-         if(j>0)
-           {
-            pwr_lambda*=lambda;
-            pwr_x*=x;
-            pwr_two*=0.5;
-            fact_mult*=1.0/j;
-            inv_factor*=1.0/(j+half_nu-1);
-           }
-         double dp=coef_gamma*inv_factor*pwr_lambda*pwr_two*pwr_x*fact_mult*coef_lambda_x;
-         pdf=pdf+dp;
-         //--- check stop
-         if(dp/(pdf+10E-10)<10E-16)
-            break;
-         j++;
-        }
-      //--- check convergence
-      if(j>max_terms)
-        {
-         error_code=ERR_NON_CONVERGENCE;
-         return QNaN;
-        }
-
-      //--- calculate cdf
-      pwr_lambda=1.0;
-      fact_mult=1.0;
-      double cdf=0.0;
-      j=0;
-      //--- direct summation
-      while(j<max_terms)
-        {
-         if(j>0)
-           {
-            pwr_lambda*=lambda;
-            fact_mult/=j;
-           }
-         double coef1=coef_lambda*pwr_lambda*fact_mult;
-         double coef2=MathMin(MathGammaIncomplete(half_x,half_nu+j),1.0);
-         double dp=coef1*coef2;
-         cdf=cdf+dp;
-         if((dp/(cdf+10E-10))<10E-16)
-            break;
-         j++;
-        }
-      //---
-      if(j>max_terms)
-        {
-         error_code=ERR_NON_CONVERGENCE;
-         return QNaN;
-        }
-
-      //--- calculate ratio
-      h=(cdf-prob)/pdf;
-
-      double x_new=x-h;
-      if(x_new<0.0)
-         x_new=x*0.1;
-      else
-      if(x_new>1.0)
-         x_new=1.0-(1-x)*0.1;
-      x=x_new;
-
-      iterations++;
+      error_code=ERR_RESULT_INFINITE;
+      return QPOSINF;
      }
-//--- check convergence
-   if(iterations<max_iterations)
-      return x;
-   else
+
+   int err_code=ERR_OK;
+   double mean=nu+sigma;
+   double sd=MathSqrt(2.0*(nu+2.0*sigma));
+   double lo=0.0;
+   double hi=MathMax(1.0,mean+10.0*sd);
+   double cdf_hi=MathCumulativeDistributionNoncentralChiSquare(hi,nu,sigma,true,false,err_code);
+
+   const int max_expand=200;
+   int expand=0;
+   while(err_code==ERR_OK && MathIsValidNumber(cdf_hi) && cdf_hi<prob && expand<max_expand)
+     {
+      lo=hi;
+      hi*=2.0;
+      cdf_hi=MathCumulativeDistributionNoncentralChiSquare(hi,nu,sigma,true,false,err_code);
+      expand++;
+     }
+
+   if(err_code!=ERR_OK || !MathIsValidNumber(cdf_hi) || cdf_hi<prob)
      {
       error_code=ERR_NON_CONVERGENCE;
       return QNaN;
      }
+
+   const int max_iterations=200;
+   const double abs_tol=1e-14;
+   const double rel_tol=1e-14;
+
+   for(int i=0;i<max_iterations;i++)
+     {
+      double mid=0.5*(lo+hi);
+      double cdf_mid=MathCumulativeDistributionNoncentralChiSquare(mid,nu,sigma,true,false,err_code);
+
+      if(err_code!=ERR_OK || !MathIsValidNumber(cdf_mid))
+        {
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
+        }
+
+      if(cdf_mid<prob)
+         lo=mid;
+      else
+         hi=mid;
+
+      if(MathBisectionConverged(lo,hi,abs_tol,rel_tol))
+        {
+         error_code=ERR_OK;
+         return 0.5*(lo+hi);
+        }
+     }
+
+   error_code=ERR_OK;
+   return 0.5*(lo+hi);
   }
 //+------------------------------------------------------------------+
 //| Noncentral Chi-Square distribution quantile function(inverse CDF)|
@@ -604,136 +538,22 @@ double MathQuantileNoncentralChiSquare(const double probability,const double nu,
 //+------------------------------------------------------------------+
 bool MathQuantileNoncentralChiSquare(const double &probability[],const double nu,const double sigma,const bool tail,const bool log_mode,double &result[])
   {
-//--- check NaN
-   if(!MathIsValidNumber(nu) || !MathIsValidNumber(sigma))
-      return false;
-//--- check arguments
-   if(nu!=MathRound(nu) || nu<=0.0)
-      return false;
-
    int data_count=ArraySize(probability);
-   if(data_count==0)
-      return false;
+   if(data_count<=0)
+      return(false);
 
-//--- common factors for pdf and cdf calculation
-   double lambda=sigma*0.5;
-   double half_nu=nu*0.5;
-   double pwr_two0=MathExp(-half_nu*MathLog(2));
-   double pwr_gamma0=1.0/MathGamma(half_nu);
-   double coef_lambda=MathExp(-lambda);
-   double half_nu_m1=half_nu-1.0;
-   const int max_terms=1000;
-   const int max_iterations=50;
-   double h_min=10E-10;
-   ArrayResize(result,data_count);
-   for(int i=0; i<data_count; i++)
+   if(ArrayResize(result,data_count)!=data_count)
+      return(false);
+
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      //--- calculate real probability
-      double prob=TailLogProbability(probability[i],tail,log_mode);
-
-      if(prob==0.0)
-         result[i]=0.0;
-      else
-      if(prob==1.0)
-         result[i]=QPOSINF;
-      else
-        {
-         //--- check probability range
-         if(prob<0.0 || prob>1.0)
-            return false;
-
-         //--- prepare values for initial x estimation
-         int    err_code=0;
-         double x=0.5;
-         double h=1.0;
-         //--- Newton iterations
-         int iterations=0;
-         while(iterations<max_iterations)
-           {
-            //--- check convergence
-            if((MathAbs(h)>h_min && MathAbs(h)>MathAbs(h_min*x))==false)
-               break;
-
-            //double pdf=MathProbabilityDensityNoncentralChiSquare(x,nu,sigma,false,err_code);
-            double half_x=x*0.5;
-            double pwr_lambda=1.0;
-            double pwr_two=pwr_two0;
-            double pwr_x=MathPow(x,half_nu_m1);
-            double fact_mult=1.0;
-            double coef_lambda_x=coef_lambda*MathExp(-half_x);
-            double inv_factor=1.0;
-            //--- calculate density using direct summation
-            int j=0;
-            double pdf=0;
-            while(j<max_terms)
-              {
-               if(j>0)
-                 {
-                  pwr_lambda*=lambda;
-                  pwr_x*=x;
-                  pwr_two*=0.5;
-                  fact_mult*=1.0/j;
-                  inv_factor*=1.0/(j+half_nu-1);
-                 }
-               double dp=pwr_gamma0*inv_factor*pwr_lambda*pwr_two*pwr_x*fact_mult*coef_lambda_x;
-               pdf=pdf+dp;
-               //--- check stop
-               if(dp/(pdf+10E-10)<10E-16)
-                  break;
-               j++;
-              }
-            //--- check convergence
-            if(j>max_terms)
-               return false;
-
-            //--- calculate cdf
-            pwr_lambda=1.0;
-            fact_mult=1.0;
-            pwr_lambda=1.0;
-            fact_mult=1.0;
-            double cdf=0.0;
-            j=0;
-            //--- direct summation
-            while(j<max_terms)
-              {
-               if(j>0)
-                 {
-                  pwr_lambda*=lambda;
-                  fact_mult/=j;
-                 }
-               double coef1=coef_lambda*pwr_lambda*fact_mult;
-               double coef2=MathMin(MathGammaIncomplete(half_x,half_nu+j),1.0);
-               double dp=coef1*coef2;
-               cdf=cdf+dp;
-               if((dp/(cdf+10E-10))<10E-16)
-                  break;
-               j++;
-              }
-            //---
-            if(j>max_terms)
-               return false;
-
-            //--- calculate ratio
-            h=(cdf-prob)/pdf;
-
-            double x_new=x-h;
-            if(x_new<0.0)
-               x_new=x*0.1;
-            else
-            if(x_new>1.0)
-               x_new=1.0-(1-x)*0.1;
-            x=x_new;
-
-            iterations++;
-           }
-         //--- check convergence
-         if(iterations<max_iterations)
-            result[i]=x;
-         else
-            return false;
-        }
+      result[i]=MathQuantileNoncentralChiSquare(probability[i],nu,sigma,tail,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+         return(false);
      }
-   return true;
+
+   return(true);
   }
 //+------------------------------------------------------------------+
 //| Noncentral Chi-Square distribution quantile function(inverse CDF)|
@@ -785,7 +605,7 @@ double MathRandomNoncentralChiSquare(const double nu,const double sigma,int &err
       return QNaN;
      }
 //--- check nu
-   if(nu!=MathRound(nu) || nu<=0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
@@ -837,7 +657,7 @@ bool MathRandomNoncentralChiSquare(const double nu,const double sigma,const int 
    if(!MathIsValidNumber(nu) || !MathIsValidNumber(sigma))
       return false;
 //--- check nu
-   if(nu!=MathRound(nu) || nu<=0)
+   if(nu<=0.0)
       return false;
 //--- check sigma
    if(sigma<0.0)
@@ -894,7 +714,7 @@ bool MathMomentsNoncentralChiSquare(const double nu,const double sigma,double &m
       return false;
      }
 //--- check nu
-   if(nu!=MathRound(nu) || nu<=0.0)
+   if(nu<=0.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return false;

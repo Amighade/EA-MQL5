@@ -413,11 +413,11 @@ bool MathCumulativeDistributionGamma(const double &x[],const double a,const doub
 //+------------------------------------------------------------------+
 double MathQuantileGamma(const double probability,const double a,const double b,const bool tail,const bool log_mode,int &error_code)
   {
-//--- case log probability==-inf
+//--- case log probability equals log zero
    if(log_mode==true && probability==QNEGINF)
      {
       error_code=ERR_OK;
-      return 0.0;
+      return tail ? 0.0 : QPOSINF;
      }
 //--- check NaN
    if(!MathIsValidNumber(probability) || !MathIsValidNumber(a) || !MathIsValidNumber(b))
@@ -517,6 +517,13 @@ bool MathQuantileGamma(const double &probability[],const double a,const double b
 
    for(int i=0; i<data_count; i++)
      {
+      //--- handle log zero before generic probability conversion
+      if(log_mode==true && probability[i]==QNEGINF)
+        {
+         result[i]=tail ? 0.0 : QPOSINF;
+         continue;
+        }
+
       //--- calculate real probability
       double prob=TailLogProbability(probability[i],tail,log_mode);
 

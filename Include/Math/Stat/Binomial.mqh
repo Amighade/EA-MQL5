@@ -7,6 +7,24 @@
 #include "Beta.mqh"
 
 //+------------------------------------------------------------------+
+//| Binomial tail/log helper                                         |
+//+------------------------------------------------------------------+
+double MathBinomialTailLogValue(const double lower_value,const bool tail,const bool log_mode)
+  {
+   double v=(tail ? lower_value : 1.0-lower_value);
+
+   if(v<0.0 && v>-1e-15)
+      v=0.0;
+   if(v>1.0 && v<1.0+1e-15)
+      v=1.0;
+
+   if(log_mode)
+      return (v==0.0 ? QNEGINF : MathLog(v));
+
+   return v;
+  }
+
+//+------------------------------------------------------------------+
 //| Binomial probability mass function (PDF)                         |
 //+------------------------------------------------------------------+
 //| The function returns the Binomial probability mass function      |
@@ -48,9 +66,11 @@ double MathProbabilityDensityBinomial(const double x,const double n,const double
      }
 
    error_code=ERR_OK;
-//--- case p=0
-   if(p==0.0 || p==1.0)
-      return TailLog0(true,log_mode);
+//--- degenerate cases p=0 and p=1
+   if(p==0.0)
+      return (x==0.0 ? TailLog1(true,log_mode) : TailLog0(true,log_mode));
+   if(p==1.0)
+      return (x==n ? TailLog1(true,log_mode) : TailLog0(true,log_mode));
 //--- check x range
    if(x<0 || x>n)
       return TailLog0(true,log_mode);
@@ -118,11 +138,18 @@ bool MathProbabilityDensityBinomial(const double &x[],const double n,const doubl
 
    int error_code=0;
    ArrayResize(result,data_count);
-//--- case p=0 or p=1
+//--- degenerate cases p=0 and p=1
    if(p==0.0 || p==1.0)
      {
       for(int i=0; i<data_count; i++)
-         result[i]=TailLog0(true,log_mode);
+        {
+         if(!MathIsValidNumber(x[i]) || x[i]!=MathRound(x[i]))
+            return false;
+         if(p==0.0)
+            result[i]=(x[i]==0.0 ? TailLog1(true,log_mode) : TailLog0(true,log_mode));
+         else
+            result[i]=(x[i]==n ? TailLog1(true,log_mode) : TailLog0(true,log_mode));
+        }
       return true;
      }
    for(int i=0; i<data_count; i++)
@@ -207,46 +234,36 @@ double MathCumulativeDistributionBinomial(const double x,const double n,double p
    error_code=ERR_OK;
 //--- case p==0
    if(p==0.0)
-     {
-      if(x>=0)
-         return TailLog1(tail,log_mode);
-      else
-         return TailLog0(tail,log_mode);
-     }
+      return MathBinomialTailLogValue(x>=0.0 ? 1.0 : 0.0,tail,log_mode);
 //--- case p==1
    if(p==1.0)
-     {
-      if(x>n)
-         return TailLog1(tail,log_mode);
-      else
-         return TailLog0(tail,log_mode);
-     }
+      return MathBinomialTailLogValue(x>=n ? 1.0 : 0.0,tail,log_mode);
 //--- x must be>=0
-   if(x<0)
-      return TailLog0(tail,log_mode);
+   if(x<0.0)
+      return MathBinomialTailLogValue(0.0,tail,log_mode);
 //--- check x
-   if(x>n)
-      return TailLog1(tail,log_mode);
+   if(x>=n)
+      return MathBinomialTailLogValue(1.0,tail,log_mode);
+
    int err_code=0;
 //--- calculate using Beta distribution and correct round-off errors
    double result=MathMin(1.0-MathCumulativeDistributionBeta(p,x+1.0,n-x,err_code),1.0);
+
+   if(err_code!=ERR_OK || !MathIsValidNumber(result))
+     {
+      error_code=ERR_NON_CONVERGENCE;
+      return QNaN;
+     }
+
+   if(result<0.0 && result>-1e-15)
+      result=0.0;
+   if(result>1.0 && result<1.0+1e-15)
+      result=1.0;
 //--- return result depending on arguments
-   return TailLogValue(result,tail,log_mode);
+   return MathBinomialTailLogValue(result,tail,log_mode);
   }
 //+------------------------------------------------------------------+
 //| Binomial cumulative distribution function (CDF)                  |
-//+------------------------------------------------------------------+
-//| The function returns the value of the Binomial cumulative        |
-//| distribution function with given n and p at the desired x.       |
-//|                                                                  |
-//| Arguments:                                                       |
-//| x          : Integer random variable                             |
-//| n          : Number of trials                                    |
-//| p          : Probability of success for each trial               |
-//| error_code : Variable for error code                             |
-//|                                                                  |
-//| Return value:                                                    |
-//| The cumulative distribution function evaluated at x.             |
 //+------------------------------------------------------------------+
 double MathCumulativeDistributionBinomial(const double x,const double n,double p,int &error_code)
   {
@@ -285,32 +302,23 @@ bool MathCumulativeDistributionBinomial(const double &x[],const double n,double 
    if(data_count==0)
       return false;
 
-   int error_code=0;
    ArrayResize(result,data_count);
 
 //--- case p=0 and p==1
    if(p==0.0 || p==1.0)
      {
-      if(p==0.0)
+      for(int i=0; i<data_count; i++)
         {
-         for(int i=0; i<data_count; i++)
-           {
-            if(x[i]>=0)
-               result[i]=TailLog1(tail,log_mode);
-            else
-               result[i]=TailLog0(tail,log_mode);
-           }
-        }
-      else
-      //--- p==1.0
-        {
-         for(int i=0; i<data_count; i++)
-           {
-            if(x[i]>n)
-               result[i]=TailLog1(tail,log_mode);
-            else
-               result[i]=TailLog0(tail,log_mode);
-           }
+         if(!MathIsValidNumber(x[i]))
+            return false;
+
+         double lower_value=0.0;
+         if(p==0.0)
+            lower_value=(x[i]>=0.0 ? 1.0 : 0.0);
+         else
+            lower_value=(x[i]>=n ? 1.0 : 0.0);
+
+         result[i]=MathBinomialTailLogValue(lower_value,tail,log_mode);
         }
       return true;
      }
@@ -319,40 +327,33 @@ bool MathCumulativeDistributionBinomial(const double &x[],const double n,double 
    for(int i=0; i<data_count; i++)
      {
       double x_arg=x[i];
-      if(MathIsValidNumber(x_arg))
-        {
-         if(x_arg<0)
-            result[i]=TailLog0(tail,log_mode);
-         else
-         if(x_arg>n)
-            result[i]=TailLog1(tail,log_mode);
-         else
-           {
-            double value=MathMin(1.0-MathCumulativeDistributionBeta(p,x_arg+1.0,n-x_arg,err_code),1.0);
-            //--- calculate result depending on arguments
-            result[i]=TailLogValue(value,tail,log_mode);
-           }
-        }
-      else
+      if(!MathIsValidNumber(x_arg))
          return false;
+
+      if(x_arg<0.0)
+         result[i]=MathBinomialTailLogValue(0.0,tail,log_mode);
+      else
+      if(x_arg>=n)
+         result[i]=MathBinomialTailLogValue(1.0,tail,log_mode);
+      else
+        {
+         double value=MathMin(1.0-MathCumulativeDistributionBeta(p,x_arg+1.0,n-x_arg,err_code),1.0);
+         if(err_code!=ERR_OK || !MathIsValidNumber(value))
+            return false;
+
+         if(value<0.0 && value>-1e-15)
+            value=0.0;
+         if(value>1.0 && value<1.0+1e-15)
+            value=1.0;
+
+         //--- calculate result depending on arguments
+         result[i]=MathBinomialTailLogValue(value,tail,log_mode);
+        }
      }
    return true;
   }
 //+------------------------------------------------------------------+
 //| Binomial cumulative distribution function (CDF)                  |
-//+------------------------------------------------------------------+
-//| The function returns the value of the Binomial cumulative        |
-//| distribution function with given n and p for values              |
-//| from x[] array.                                                  |
-//|                                                                  |
-//| Arguments:                                                       |
-//| x          : Array with integer random variables                 |
-//| n          : Number of trials                                    |
-//| p          : Probability of success for each trial               |
-//| error_code : Variable for error code                             |
-//|                                                                  |
-//| Return value:                                                    |
-//| true if successful, otherwise false.                             |
 //+------------------------------------------------------------------+
 bool MathCumulativeDistributionBinomial(const double &x[],const double n,double p,double &result[])
   {
@@ -379,56 +380,60 @@ bool MathCumulativeDistributionBinomial(const double &x[],const double n,double 
 //+------------------------------------------------------------------+
 double MathQuantileBinomial(const double probability,const double n,const double p,const bool tail,const bool log_mode,int &error_code)
   {
-//--- check NaN
-   if(!MathIsValidNumber(probability) || !MathIsValidNumber(n) || !MathIsValidNumber(p))
+   if(!MathIsValidNumber(n) || !MathIsValidNumber(p))
      {
       error_code=ERR_ARGUMENTS_NAN;
       return QNaN;
      }
-//--- check n
-   if(n<0 || n!=MathRound(n))
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
-     }
-//--- check p range
-   if(p<0.0 || p>1.0)
-     {
-      error_code=ERR_ARGUMENTS_INVALID;
-      return QNaN;
-     }
-//--- calculate real probability
-   double prob=TailLogProbability(probability,tail,log_mode);
-//--- check probability range
-   if(prob<0.0 || prob>1.0)
+
+   if(n!=MathRound(n) || n<0.0 || p<0.0 || p>1.0)
      {
       error_code=ERR_ARGUMENTS_INVALID;
       return QNaN;
      }
 
-   error_code=ERR_OK;
-   int iterations=0;
-   const int max_iterations=1000;
-//--- direct cdf calculation
-   double sum=MathProbabilityDensityBinomial(0,n,p,false,error_code);
-   while(sum<prob && iterations<max_iterations)
+   double prob=0.0;
+   if(!MathCheckProbabilityInput(probability,tail,log_mode,prob,error_code))
+      return QNaN;
+
+   int nn=(int)n;
+   if(prob==0.0)
+      return 0.0;
+   if(prob==1.0)
+      return (double)nn;
+
+   if(p==0.0)
      {
-      sum+=MathProbabilityDensityBinomial(iterations,n,p,false,error_code);
-      iterations++;
+      error_code=ERR_OK;
+      return 0.0;
      }
-//--- check convergence
-   if(iterations<max_iterations)
+   if(p==1.0)
      {
-      if(iterations==0)
-         return 0.0;
+      error_code=ERR_OK;
+      return (double)nn;
+     }
+
+   int err_code=ERR_OK;
+   int left=0;
+   int right=nn;
+   while(left<right)
+     {
+      int mid=left+(right-left)/2;
+      double cdf_mid=MathCumulativeDistributionBinomial(mid,n,p,true,false,err_code);
+      if(err_code!=ERR_OK || !MathIsValidNumber(cdf_mid))
+        {
+         error_code=ERR_NON_CONVERGENCE;
+         return QNaN;
+        }
+      const double q_eps=1e-14;
+      if(cdf_mid+q_eps<prob)
+         left=mid+1;
       else
-         return iterations-1;
+         right=mid;
      }
-   else
-     {
-      error_code=ERR_RESULT_INFINITE;
-      return QPOSINF;
-     }
+
+   error_code=ERR_OK;
+   return (double)left;
   }
 //+------------------------------------------------------------------+
 //| Binomial distribution quantile function (inverse CDF)            |
@@ -471,58 +476,22 @@ double MathQuantileBinomial(const double probability,const double n,const double
 //+------------------------------------------------------------------+ 
 bool MathQuantileBinomial(const double &probability[],const double n,const double p,const bool tail,const bool log_mode,double &result[])
   {
-//--- check NaN
-   if(!MathIsValidNumber(n) || !MathIsValidNumber(p))
-      return false;
-//--- check n
-   if(n<0 || n!=MathRound(n))
-      return false;
-//--- check p range
-   if(p<0.0 || p>1.0)
-      return false;
-
    int data_count=ArraySize(probability);
-   if(data_count==0)
-      return false;
+   if(data_count<=0)
+      return(false);
 
-   int error_code=0;
-   ArrayResize(result,data_count);
+   if(ArrayResize(result,data_count)!=data_count)
+      return(false);
 
-   const int max_iterations=1000;
-   for(int i=0; i<data_count; i++)
+   int error_code=ERR_OK;
+   for(int i=0;i<data_count;i++)
      {
-      //--- calculate real probability
-      double prob=TailLogProbability(probability[i],tail,log_mode);
-
-      if(MathIsValidNumber(prob))
-        {
-         //--- check probability range
-         if(prob<0.0 || prob>1.0)
-            return false;
-
-         int iterations=0;
-         //--- direct cdf calculation
-         double sum=MathProbabilityDensityBinomial(0,n,p,false,error_code);
-         while(sum<prob && iterations<max_iterations)
-           {
-            sum+=MathProbabilityDensityBinomial(iterations,n,p,false,error_code);
-            iterations++;
-           }
-         //--- check convergence
-         if(iterations<max_iterations)
-           {
-            if(iterations==0)
-               result[i]=0;
-            else
-               result[i]=iterations-1;
-           }
-         else
-            return false;
-        }
-      else
-         return false;
+      result[i]=MathQuantileBinomial(probability[i],n,p,tail,log_mode,error_code);
+      if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+         return(false);
      }
-   return true;
+
+   return(true);
   }
 //+------------------------------------------------------------------+
 //| Binomial distribution quantile function (inverse CDF)            |
@@ -871,4 +840,4 @@ bool MathMomentsBinomial(const double n,const double p,double &mean,double &vari
 //--- successful
    return true;
   }
-//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+ 

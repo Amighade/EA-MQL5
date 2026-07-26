@@ -383,7 +383,7 @@ bool CScrollV::OnThumbDragStart(void)
 //--- create
    m_drag_object.Create(m_chart_id,"",m_subwin,x1,y1,x2,y2);
    m_drag_object.PropFlags(WND_PROP_FLAG_CAN_DRAG);
-//--- ограничения
+//--- limitation
    m_drag_object.Limits(x1,m_dec.Bottom()-CONTROLS_DRAG_SPACING,x2,m_inc.Top()+CONTROLS_DRAG_SPACING);
 //--- set mouse params
    m_drag_object.MouseX(m_thumb.MouseX());
@@ -606,7 +606,7 @@ bool CScrollH::OnThumbDragStart(void)
 //--- create
    m_drag_object.Create(m_chart_id,"",m_subwin,x1,y1,x2,y2);
    m_drag_object.PropFlags(WND_PROP_FLAG_CAN_DRAG);
-//--- ограничения
+//--- limitation
    m_drag_object.Limits(m_dec.Right()-CONTROLS_DRAG_SPACING,y1,m_inc.Left()+CONTROLS_DRAG_SPACING,y2);
 //--- set mouse params
    m_drag_object.MouseX(m_thumb.MouseX());

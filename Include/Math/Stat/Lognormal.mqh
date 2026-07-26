@@ -340,7 +340,7 @@ double MathQuantileLognormal(const double probability,const double mu,const doub
    if(log_mode==true && probability==QNEGINF)
      {
       error_code=ERR_OK;
-      return 0.0;
+      return tail ? 0.0 : QPOSINF;
      }
 //--- check NaN
    if(!MathIsValidNumber(probability) || !MathIsValidNumber(mu) || !MathIsValidNumber(sigma))
@@ -403,7 +403,33 @@ double MathQuantileLognormal(const double probability,const double mu,const doub
         }
      }
 //--- return lognormal quantile using Normal distribution
-   return MathExp(MathQuantileNormal(prob,mu,sigma,error_code));
+   double z=MathQuantileNormal(prob,0.0,1.0,error_code);
+   if(error_code!=ERR_OK || !MathIsValidNumber(z))
+      return QNaN;
+
+//--- refine normal quantile to improve round-trip accuracy in tails
+   for(int iter=0;iter<3;iter++)
+     {
+      int cdf_err=ERR_OK;
+      int pdf_err=ERR_OK;
+      double cdf=MathCumulativeDistributionNormal(z,0.0,1.0,true,false,cdf_err);
+      double pdf=MathProbabilityDensityNormal(z,0.0,1.0,false,pdf_err);
+
+      if(cdf_err!=ERR_OK || pdf_err!=ERR_OK || !MathIsValidNumber(cdf) || !MathIsValidNumber(pdf) || pdf<=0.0)
+         break;
+
+      double dz=(cdf-prob)/pdf;
+      if(!MathIsValidNumber(dz))
+         break;
+
+      z-=dz;
+
+      if(MathAbs(dz)<=1.0e-14*(1.0+MathAbs(z)))
+         break;
+     }
+
+   error_code=ERR_OK;
+   return MathExp(mu+sigma*z);
   }
 //+------------------------------------------------------------------+
 //| Lognormal distribution quantile function (inverse CDF)           |
@@ -460,6 +486,13 @@ bool MathQuantileLognormal(const double &probability[],const double mu,const dou
    ArrayResize(result,data_count);
    for(int i=0; i<data_count; i++)
      {
+      //--- handle log zero before generic probability conversion
+      if(log_mode==true && probability[i]==QNEGINF)
+        {
+         result[i]=tail ? 0.0 : QPOSINF;
+         continue;
+        }
+
       //--- calculate real probability
       double prob=TailLogProbability(probability[i],tail,log_mode);
       //--- check probability range
@@ -490,8 +523,12 @@ bool MathQuantileLognormal(const double &probability[],const double mu,const dou
            }
         }
       else
-      //--- calculate lognormal quantile using Normal distribution
-         result[i]=MathExp(MathQuantileNormal(prob,mu,sigma,error_code));
+        {
+         //--- calculate lognormal quantile using Normal distribution
+         result[i]=MathQuantileLognormal(prob,mu,sigma,true,false,error_code);
+         if(error_code!=ERR_OK || !MathIsValidNumber(result[i]))
+            return false;
+        }
      }
    return true;
   }

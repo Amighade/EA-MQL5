@@ -20,7 +20,7 @@ private:
    int               m_offset;              // index of first visible row in array of rows
    int               m_total_view;          // number of visible rows
    int               m_item_height;         // height of visible row
-   bool              m_height_variable;     // признак переменной высоты списка
+   bool              m_height_variable;     // variable size flag
    //--- data
    CArrayString      m_strings;             // array of rows
    CArrayLong        m_values;              // array of values

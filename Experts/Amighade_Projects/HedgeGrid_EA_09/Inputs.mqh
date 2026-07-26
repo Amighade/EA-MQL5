@@ -61,7 +61,8 @@ enum ENUM_LOT_MODE
    LOT_HALF = 1,  // Half ladder/count (low margin fallback)
   };
 
-enum ENUM_REFILL_STYLE { REFILL_THRESHOLD = 0, REFILL_FOLLOW_PRICE = 1 };
+enum ENUM_REFILL_STYLE { REFILL_THRESHOLD = 0, REFILL_FOLLOW_PRICE = 1 };//delete
+enum ENUM_INSIDE_REFILL_STYLE { INSIDE_THRESHOLD = 0, INSIDE_FOLLOW_PRICE = 1, INSIDE_REVISIT = 2 };
   
 double InpCommissionPerLot = 0.0;
 //+------------------------------------------------------------------+
@@ -96,13 +97,17 @@ input bool   InpEnableRecentering  = false;    // Recenter grid when fresh and o
 input double InpThresholdFactor    = 3.0;      // Recenter zone divisor (gap / factor = trigger threshold)
 
 
-input ENUM_REFILL_STYLE InpRefillStyle = REFILL_THRESHOLD;  // Refill Style; thershold or following price
+input ENUM_REFILL_STYLE InpRefillStyle = REFILL_THRESHOLD;  // Refill Style; thershold or following price//delete
+input ENUM_INSIDE_REFILL_STYLE InpInsideRefillStyle = INSIDE_THRESHOLD;  // Inside refill style: threshold, follow-price, or revisit
 //--- BRICK 4: Refill inside gap -----------------------------------------
 input bool   InpEnableRefillInside  = false;   // Refill inside the gap (between nearest BUY/SELL) when empty?
 //--- BRICK 5: Refill outside range --------------------------------------
 input bool   InpEnableRefillOutside = false;   // Refill outside levels when count drops below InpMinGridLevels?
                                                 // NOTE: keep InpEnableShifting = false when this is on.
                                                 // NOTE: keep InpEnableLotIncrease = false when either refill brick is on.
+                                                
+//--- BRICK 7: Revisit refill — pending stop at a position's price on reversal
+input bool InpEnableRevisitRefill = false;   // Place opposite pending stop at each filled level, sized by level-increment
 
 //--- BRICK 6: SL (breakeven-lock) ---------------------------------------
 input bool   InpEnableSL           = false;    // Add SL to winning side once armed?
