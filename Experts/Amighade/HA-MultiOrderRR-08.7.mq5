@@ -136,7 +136,8 @@ input double MarginReserve       = 0.0;
 // FreeMargin AFTER placing next pending must stay >= this
 input double AllowedEquity       = 0.0;
 // Allowed Equity could be used
-input int    ExhaustMaxOpenDeals        = 18;
+input int    ExhaustMaxOpenDeals        = 0;
+input int    ExhaustMaxOpenDeals_2        = 0;
 // If open deals >= this number, trigger budget exhaustion (0 = disabled)
 input double ExhaustMaxDealSize = 0;
 input double ExhaustMaxDealSize_2 = 0;
@@ -746,7 +747,6 @@ double gPoint = 0.0;
 // Budget exhaustion flag: when true => no new pending orders allowed
 bool gBudgetExhausted = false;
 bool gBudgetCheckEMGCY = false;
-bool gBudgetExhaustedLot = false;
 
 // Compression flag: when true => compression owns pending logic (cancel/replace)
 bool gCompressionActive = false;
@@ -980,13 +980,13 @@ void OnTick()
       gdebugD04 = -1*nWNSL;
       }
       
-   if ( currentorderlot >= exhaustlottrigger ) ExhaustBudgetCheck(poslists,currentorderprice, currentorderlot, currentordertype);
+   if ( currentorderlot >= exhaustlottrigger ) ExhaustBudgetCheckEMGCY(poslists,currentorderprice, currentorderlot, currentordertype, floatingNet);
    if(gCompressionActive)
    {
       ManageCompressionProtect(poslists);  // Every tick if active
       //ManageOpenPendingOrder(poslists);
    }
-   if(gBudgetExhausted || gBudgetExhaustedLot)
+   if(gBudgetExhausted)
    {
       ManageBudget(poslists);             // Budget entry check
    }
@@ -1025,7 +1025,7 @@ void OnTick()
 
    if(newBarSinceLastPlacement || quietAfterTx)
    {
-      if(!gBudgetExhausted && !gBudgetExhaustedLot && !HasPendingOrder(_Symbol, MagicNumber))
+      if(!gBudgetExhausted && !HasPendingOrder(_Symbol, MagicNumber))
       {
          PlaceBreakoutOrders(_Symbol, poslists);
          gLastPlaceBar = barId;
@@ -1060,6 +1060,22 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    int nWSL = ArraySize(poslists.lstWNSL);
    int nAllDeals = ArraySize(poslists.lstAllDeals);
    
+   double currentorderlot = 0.0;   
+   double currentorderprice = 0.0;   
+   ENUM_ORDER_TYPE currentordertype = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+      {
+         ulong ticket = OrderGetTicket(i);
+         if(ticket == 0) continue;
+      
+         if(OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
+         if(OrderGetInteger(ORDER_MAGIC) != MagicNumber) continue;
+         
+         currentorderprice = OrderGetDouble(ORDER_PRICE_OPEN);
+         currentorderlot  = OrderGetDouble(ORDER_VOLUME_CURRENT);
+         currentordertype = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      }
+   
    ManageOpenPendingOrder(poslists);
 
    // === Setup: Update Candle and refresh deal list ===
@@ -1083,7 +1099,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
                         + ", Buffer: " + DoubleToString(gdebugD04,0)
                         );
                         
-      //ExhaustBudgetCheck(poslists);
+      ExhaustBudgetCheck(poslists,currentorderprice, currentorderlot, currentordertype);
       if(!gCompressionActive && !gABWCLArmed && UseCompressionProtect)
       {
          EnterCompressionProtect(poslists);  // ← Entry can happen any tick
@@ -1092,8 +1108,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       {
          ManageCompressionProtect(poslists);
       }
-      //ExhaustBudgetCheck(poslists);
-      if(gBudgetExhausted || gBudgetExhaustedLot)
+      ExhaustBudgetCheck(poslists,currentorderprice, currentorderlot, currentordertype);
+      if(gBudgetExhausted)
       {
          ManageBudget(poslists);
       }
@@ -1364,27 +1380,6 @@ void ManageBudget(PosLists &poslists)
    {
       AddSLToNextOppositeDeal(poslists);
    }
-
-   if(gBudgetExhaustedLot)
-   {
-   double floatingNet = 0.0;
-
-   for(int i = 0; i < nAll; i++)
-      {
-      floatingNet += poslists.lstAll[i].profit;
-      if(gCommissionPerLot > 0.0)
-      floatingNet -= gCommissionPerLot * poslists.lstAll[i].lots;
-      }
-   
-   if(floatingNet >= -10)
-      {  
-      FastCloseNonEpochFromEndToTarget(poslists, 0);
-      CancelAllPending();
-      ResetBudgetExhausted();
-      return;
-      }
-   }
-    
 }
 
 void AddSLToNextOppositeDeal(PosLists &poslists)
@@ -5287,9 +5282,48 @@ void ExhaustBudgetCheck(PosLists &poslists,double currentorderprice, double curr
       return;
      }
    //AGH_REV_8_5
-   
+
+   double exhaustlottrigger_3 = (LotSizeInput / gMinLot) * ExhaustMaxDealSize_3;
+   if(ExhaustMaxDealSize_3 > 0.0)
+   {
+      if( nWNSL > 0)
+      {
+         double lastWNSLLot = poslists.lstWNSL[nWNSL-1].lots;
+         //if(lastWNSLLot >= exhaustlottrigger)
+         if(currentorderlot >= exhaustlottrigger_3)
+         {
+            gBudgetExhausted = true;
+            if(EnableDebugLogs)
+               PrintFormat("[BUDGET] Deal size exhausted. WNSLCount=%d LastWNSLLot=%.2f Trigger=%.2f",
+                           nWNSL,
+                           lastWNSLLot,
+                           exhaustlottrigger_3);
+            return;
+         }
+      }
+   }
    //AGH_REV_8_7
-   double floatingNet = 0.0;
+   
+   if(EnableDebugLogs)
+      PrintFormat("[BUDGET] Margin OK. FutureMargin: %.2f, Limit: %.2f, UsedNow: %.2f",
+                  marginReqAfter, budgetLimit, marginUsedNow);
+}
+   
+void ExhaustBudgetCheckEMGCY(PosLists &poslists,double currentorderprice, double currentorderlot, ENUM_ORDER_TYPE currentordertype, double floatingNet)
+{
+   if(!UseBudgetExhaustion) return;
+   int nWNSL = ArraySize(poslists.lstWNSL);
+   int nAll = ArraySize(poslists.lstAll);
+   
+   
+   double totalLot = 0.0;
+   for(int i = 0; i < nWNSL; i++)
+   {
+      double lot = poslists.lstWNSL[i].lots;
+      if(lot > 0.0)
+         totalLot += lot;
+   }
+   
    for(int i = 0; i < nAll; i++)
       {
       floatingNet += poslists.lstAll[i].profit;
@@ -5298,12 +5332,11 @@ void ExhaustBudgetCheck(PosLists &poslists,double currentorderprice, double curr
       }
     
    double exhaustlottrigger = (LotSizeInput / gMinLot) * ExhaustMaxDealSize;
-
+   
    gBudgetCheckEMGCY = false;
    gdebugD01 = currentorderlot;
    gdebugD02 = exhaustlottrigger;
    gdebugD03 = floatingNet;
-   gdebugD04 = -1*nWNSL;
    
    if(ExhaustMaxDealSize > 0.0)
    {
@@ -5324,7 +5357,7 @@ void ExhaustBudgetCheck(PosLists &poslists,double currentorderprice, double curr
             ResetBudgetExhausted();
             ResetCompression();
             BuildAllListsSorted(poslists);
-            Print(" L: ", __LINE__, " ", MagicNumber, " '-1*nWNSL' ",-1*nWNSL, " currentorderlot ",  currentorderlot," floatingNet ",DoubleToString(floatingNet, 2));  
+            Print(" L : ", __LINE__, " ", MagicNumber, " '-1*nWNSL' ",-1*nWNSL, " currentorderlot ",  currentorderlot," floatingNet ",DoubleToString(floatingNet, 2));  
             SendTelegramMessage(IntegerToString(MagicNumber) +
                         "Deal qty : " + IntegerToString(nAll) 
                         + ", MarginUsed: " + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN),0)
@@ -5333,14 +5366,14 @@ void ExhaustBudgetCheck(PosLists &poslists,double currentorderprice, double curr
             return;
             }
             
-         if(ExhaustMaxOpenDeals >0 && nWNSL >= ExhaustMaxOpenDeals && floatingNet >= -2*nWNSL)
+         if(ExhaustMaxOpenDeals_2 >0 && nWNSL >= ExhaustMaxOpenDeals_2 && floatingNet >= -2*nWNSL)
             {
             FastCloseNonEpochFromEndToTarget(poslists, 0);
             CancelAllPending();
             ResetBudgetExhausted();
             ResetCompression();
             BuildAllListsSorted(poslists);
-            Print(" Line : ", __LINE__, " ", MagicNumber, " '-2*nWNSL' ",-2*nWNSL, " currentorderlot ",  currentorderlot," floatingNet ",DoubleToString(floatingNet, 2));  
+            Print(" Line : ", __LINE__, " ", MagicNumber, " 'nWNSL' ", nWNSL, " '-2*nWNSL' ",-2*nWNSL, " currentorderlot ",  currentorderlot," floatingNet ",DoubleToString(floatingNet, 2));  
             SendTelegramMessage(IntegerToString(MagicNumber) +
                         "Deal qty : " + IntegerToString(nAll) 
                         + ", MarginUsed: " + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN),0)
@@ -5353,12 +5386,6 @@ void ExhaustBudgetCheck(PosLists &poslists,double currentorderprice, double curr
    }
    
    double exhaustlottrigger_2 = (LotSizeInput / gMinLot) * ExhaustMaxDealSize_2;
-
-   gBudgetCheckEMGCY = false;
-   gdebugD01 = currentorderlot;
-   gdebugD02 = exhaustlottrigger;
-   gdebugD03 = floatingNet;
-   gdebugD04 = -1*nWNSL;
    
    if(ExhaustMaxDealSize_2 > 0.0)
    {
@@ -5366,9 +5393,9 @@ void ExhaustBudgetCheck(PosLists &poslists,double currentorderprice, double curr
       {
          gBudgetCheckEMGCY = true;
          gdebugD01 = currentorderlot;
-         gdebugD02 = exhaustlottrigger;
+         gdebugD02 = exhaustlottrigger_2;
          gdebugD03 = floatingNet;
-         gdebugD04 = -1*nWNSL;
+         gdebugD04 = -2*nWNSL;
          
          //double lastWNSLLot = poslists.lstWNSL[nWNSL-1].lots;
          //if(lastWNSLLot >= exhaustlottrigger)
@@ -5388,14 +5415,14 @@ void ExhaustBudgetCheck(PosLists &poslists,double currentorderprice, double curr
             return;
             }
             
-         if(ExhaustMaxOpenDeals >0 && nWNSL >= ExhaustMaxOpenDeals && floatingNet >= -4*nWNSL)
+         if(ExhaustMaxOpenDeals_2 >0 && nWNSL >= ExhaustMaxOpenDeals_2 && floatingNet >= -4*nWNSL)
             {
             FastCloseNonEpochFromEndToTarget(poslists, 0);
             CancelAllPending();
             ResetBudgetExhausted();
             ResetCompression();
             BuildAllListsSorted(poslists);
-            Print(" Line : ", __LINE__, " ", MagicNumber, " '-4*nWNSL' ",-4*nWNSL, " currentorderlot ",  currentorderlot," floatingNet ",DoubleToString(floatingNet, 2));  
+            Print(" Line : ", __LINE__, " ", MagicNumber, " 'nWNSL' ", nWNSL, " '-4*nWNSL' ",-4*nWNSL, " currentorderlot ",  currentorderlot," floatingNet ",DoubleToString(floatingNet, 2));  
             SendTelegramMessage(IntegerToString(MagicNumber) +
                         "Deal qty : " + IntegerToString(nAll) 
                         + ", MarginUsed: " + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN),0)
@@ -5427,38 +5454,13 @@ void ExhaustBudgetCheck(PosLists &poslists,double currentorderprice, double curr
    }*/
    //AGH_REV_8_7
    
-   //AGH_REV_8_7
-   double exhaustlottrigger_3 = (LotSizeInput / gMinLot) * ExhaustMaxDealSize_3;
-   if(ExhaustMaxDealSize_3 > 0.0)
-   {
-      if( nWNSL > 0)
-      {
-         double lastWNSLLot = poslists.lstWNSL[nWNSL-1].lots;
-         //if(lastWNSLLot >= exhaustlottrigger)
-         if(currentorderlot >= exhaustlottrigger_3)
-         {
-            gBudgetExhausted = true;
-            if(EnableDebugLogs)
-               PrintFormat("[BUDGET] Deal size exhausted. WNSLCount=%d LastWNSLLot=%.2f Trigger=%.2f",
-                           nWNSL,
-                           lastWNSLLot,
-                           exhaustlottrigger);
-            return;
-         }
-      }
-   }
-   //AGH_REV_8_7
-   
-   if(EnableDebugLogs)
-      PrintFormat("[BUDGET] Margin OK. FutureMargin: %.2f, Limit: %.2f, UsedNow: %.2f",
-                  marginReqAfter, budgetLimit, marginUsedNow);
 }
+   
    
 void ResetBudgetExhausted()
 {
-   //if(!gBudgetExhausted || !gBudgetExhaustedLot) return;
+   //if(!gBudgetExhausted) return;
    gBudgetExhausted = false;
-   gBudgetExhaustedLot = false;
 
    if(EnableDebugLogs) Print("[BUD] RESET BudgetExhausted (compression triggered).");
 }
