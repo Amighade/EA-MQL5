@@ -104,9 +104,6 @@ input bool   InpEnableRefillInside  = false;   // Refill inside the gap (between
 input bool   InpEnableRefillOutside = false;   // Refill outside levels when count drops below InpMinGridLevels?
                                                 // NOTE: keep InpEnableShifting = false when this is on.
                                                 // NOTE: keep InpEnableLotIncrease = false when either refill brick is on.
-                                                
-//--- BRICK 7: Revisit refill — pending stop at a position's price on reversal
-input bool InpEnableRevisitRefill = false;   // Place opposite pending stop at each filled level, sized by level-increment
 
 //--- BRICK 6: SL (breakeven-lock) ---------------------------------------
 input bool   InpEnableSL           = false;    // Add SL to winning side once armed?

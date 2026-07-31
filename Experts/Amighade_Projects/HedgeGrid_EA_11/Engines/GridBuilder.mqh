@@ -436,11 +436,10 @@ void RefillOutside(GridState &state)
 //| the level that just filled, sized via level-increment. This is   |
 //| what makes a Sell able to "revisit" a level a Buy filled at:     |
 //| the pending order didn't exist until this fill created it.       |
-//| Skips if an opposite order already sits at that price.            |
+//| Skips if an opposite order already sits at that price.           |
 //+------------------------------------------------------------------+
 void PlaceRevisitOrder(GridState &state)
 {
-   if(!InpEnableRevisitRefill) return;
    if(state.prevHitPrice <= 0.0) return;   // no predecessor yet — first fill of the cycle
 
    double level = AlignToTick(_Symbol, state.prevHitPrice);
@@ -465,29 +464,6 @@ void PlaceRevisitOrder(GridState &state)
       PlaceSellStop(level, lot, state.magicNumber);
    else
       PlaceBuyStop(level, lot, state.magicNumber);
-}
-
-void ProcessInsideRefill(GridState &state)
-{
-   if(!InpEnableRefillInside) return;
-
-   switch(InpInsideRefillStyle)
-     {
-      case INSIDE_THRESHOLD:
-         FillOneSideInside(ORDER_TYPE_BUY_STOP,  state);
-         FillOneSideInside(ORDER_TYPE_SELL_STOP, state);
-         break;
-      case INSIDE_FOLLOW_PRICE:
-         RefillFollowPriceInside(state);
-         break;
-      case INSIDE_REVISIT:
-         PlaceRevisitOrder(state);
-         break;
-      case INSIDE_PASS_REFILL:
-         ProcessPassRefill(state, state.lastHitPrice,
-                            state.lastHitDirection == ORDER_TYPE_BUY ? POSITION_TYPE_BUY : POSITION_TYPE_SELL);
-         break;
-     }
 }
 
 void ProcessPassRefill(GridState &state, double fillPrice, ENUM_POSITION_TYPE filledSide)
@@ -534,6 +510,29 @@ void ProcessPassRefill(GridState &state, double fillPrice, ENUM_POSITION_TYPE fi
    state.runSide = side;
    ArrayResize(state.runLevels, 1);
    state.runLevels[0] = fillPrice;
+}
+
+void ProcessInsideRefill(GridState &state)
+{
+   if(!InpEnableRefillInside) return;
+
+   switch(InpInsideRefillStyle)
+     {
+      case INSIDE_THRESHOLD:
+         FillOneSideInside(ORDER_TYPE_BUY_STOP,  state);
+         FillOneSideInside(ORDER_TYPE_SELL_STOP, state);
+         break;
+      case INSIDE_FOLLOW_PRICE:
+         RefillFollowPriceInside(state);
+         break;
+      case INSIDE_REVISIT:
+         PlaceRevisitOrder(state);
+         break;
+      case INSIDE_PASS_REFILL:
+         ProcessPassRefill(state, state.lastHitPrice,
+                            state.lastHitDirection == ORDER_TYPE_BUY ? POSITION_TYPE_BUY : POSITION_TYPE_SELL);
+         break;
+     }
 }
 
 //+------------------------------------------------------------------+
