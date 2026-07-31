@@ -277,7 +277,7 @@ bool DeleteOrder(ulong ticket)
 //+------------------------------------------------------------------+
 void DeleteAllOrders(int magicNumber)
 {
-   for(int i = 0; i < OrdersTotal(); i++)
+   for(int i = OrdersTotal()-1; i >= 0; i--)
      {
       ulong ticket = OrderGetTicket(i);
       if(!OrderSelect(ticket)) continue;
