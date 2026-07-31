@@ -231,6 +231,7 @@ struct PosLists
    PosSnap lstAll[];
    PosSnap lstWNSL[];
    PosSnap lstAllDeals[];
+   double  totalLot;
 };
 
 struct SymbolRoute
@@ -707,6 +708,7 @@ double   gdebugD01 = 0 ;
 double   gdebugD02 = 0 ;
 double   gdebugD03 = 0 ;
 double   gdebugD04 = 0 ;
+double   gdebugD05 = 0 ;
 string   gdebugS01 ="" ;
 
 CTrade trade;
@@ -911,6 +913,8 @@ void OnTick()
    int nAll = ArraySize(poslists.lstAll);
    int nWNSL = ArraySize(poslists.lstWNSL);
    int nAllDeals = ArraySize(poslists.lstAllDeals);
+   double totalLot = poslists.totalLot;
+   gdebugD05 = totalLot;
    
    //if (nAll ==1 && poslists.lstAll[0].lots != LotSizeInput )
    //{
@@ -3055,6 +3059,7 @@ void DisplayDebugging(int shift=1)  // default: previous closed candle
           "gdebugD02 (double) : %.5f\n"
           "gdebugD03 (double) : %.5f\n"
           "gdebugD04 (double) : %.5f\n"
+          "gdebugD05 (double) : %.5f\n"
           "gdebugS01 (string) : %s\n"
           "gbuyEntry        : %.5f\n"
           "gsellEntry       : %.5f\n",
@@ -3066,6 +3071,7 @@ void DisplayDebugging(int shift=1)  // default: previous closed candle
           gdebugD02,
           gdebugD03,
           gdebugD04,
+          gdebugD05,
           gdebugS01,
           gbuyEntry,
           gsellEntry
@@ -5027,7 +5033,7 @@ void BuildAllListsSorted(PosLists &poslists)
    ArrayResize(poslists.lstAll, 0);
    ArrayResize(poslists.lstWNSL, 0);
    ArrayResize(poslists.lstAllDeals, 0);
-
+   double totalLot = 0;
    // Collect
    for(int i = PositionsTotal() - 1; i >= 0; --i)
    {
@@ -5049,6 +5055,7 @@ void BuildAllListsSorted(PosLists &poslists)
       int nAllDeals = ArraySize(poslists.lstAllDeals);
       ArrayResize(poslists.lstAllDeals, nAllDeals + 1);
       poslists.lstAllDeals[nAllDeals] = p;
+      totalLot += p.lots; 
       
       // Skip epoch for other lists
       if(IsEpochTicket(t)) continue;
@@ -5066,10 +5073,7 @@ void BuildAllListsSorted(PosLists &poslists)
          poslists.lstWNSL[nWNSL] = p;
       }
    }
-   // Sort all by openTime
-   //SortByOpenTimeAscending(poslists.lstAll);
-   //SortByOpenTimeAscending(poslists.lstWNSL);
-   //SortByOpenTimeAscending(poslists.lstAllDeals);
+   poslists.totalLot = totalLot;
 }
 
 void SortByOpenTime(PosSnap &arr[])
@@ -5283,21 +5287,21 @@ void ExhaustBudgetCheck(PosLists &poslists,double currentorderprice, double curr
      }
    //AGH_REV_8_5
 
-   double exhaustlottrigger_3 = (LotSizeInput / gMinLot) * ExhaustMaxDealSize_3;
-   if(ExhaustMaxDealSize_3 > 0.0)
+   double exhaustlottrigger = (LotSizeInput / gMinLot) * ExhaustMaxDealSize;
+   if(ExhaustMaxDealSize > 0.0)
    {
       if( nWNSL > 0)
       {
          double lastWNSLLot = poslists.lstWNSL[nWNSL-1].lots;
          //if(lastWNSLLot >= exhaustlottrigger)
-         if(currentorderlot >= exhaustlottrigger_3)
+         if(currentorderlot >= exhaustlottrigger)
          {
             gBudgetExhausted = true;
             if(EnableDebugLogs)
                PrintFormat("[BUDGET] Deal size exhausted. WNSLCount=%d LastWNSLLot=%.2f Trigger=%.2f",
                            nWNSL,
                            lastWNSLLot,
-                           exhaustlottrigger_3);
+                           exhaustlottrigger);
             return;
          }
       }
@@ -5314,43 +5318,28 @@ void ExhaustBudgetCheckEMGCY(PosLists &poslists,double currentorderprice, double
    if(!UseBudgetExhaustion) return;
    int nWNSL = ArraySize(poslists.lstWNSL);
    int nAll = ArraySize(poslists.lstAll);
-   
-   
-   double totalLot = 0.0;
-   for(int i = 0; i < nWNSL; i++)
-   {
-      double lot = poslists.lstWNSL[i].lots;
-      if(lot > 0.0)
-         totalLot += lot;
-   }
-   
-   for(int i = 0; i < nAll; i++)
-      {
-      floatingNet += poslists.lstAll[i].profit;
-      if(gCommissionPerLot > 0.0)
-      floatingNet -= gCommissionPerLot * poslists.lstAll[i].lots;
-      }
+   double totalLot = poslists.totalLot;
     
-   double exhaustlottrigger = (LotSizeInput / gMinLot) * ExhaustMaxDealSize;
+   double exhaustlottrigger_2 = (LotSizeInput / gMinLot) * ExhaustMaxDealSize_2;
    
    gBudgetCheckEMGCY = false;
    gdebugD01 = currentorderlot;
-   gdebugD02 = exhaustlottrigger;
+   gdebugD02 = exhaustlottrigger_2;
    gdebugD03 = floatingNet;
    
-   if(ExhaustMaxDealSize > 0.0)
+   if(ExhaustMaxDealSize_2 > 0.0)
    {
-      if( currentorderlot > exhaustlottrigger)
+      if( currentorderlot > exhaustlottrigger_2)
       {
          gBudgetCheckEMGCY = true;
          gdebugD01 = currentorderlot;
-         gdebugD02 = exhaustlottrigger;
+         gdebugD02 = exhaustlottrigger_2;
          gdebugD03 = floatingNet;
          gdebugD04 = -1*nWNSL;
          
          //double lastWNSLLot = poslists.lstWNSL[nWNSL-1].lots;
          //if(lastWNSLLot >= exhaustlottrigger)
-         if(currentorderlot >= exhaustlottrigger && floatingNet >= -1*nWNSL)
+         if(currentorderlot >= exhaustlottrigger_2 && floatingNet >= -1*nWNSL)
             {
             FastCloseNonEpochFromEndToTarget(poslists, 0);
             CancelAllPending();
@@ -5385,21 +5374,21 @@ void ExhaustBudgetCheckEMGCY(PosLists &poslists,double currentorderprice, double
       }
    }
    
-   double exhaustlottrigger_2 = (LotSizeInput / gMinLot) * ExhaustMaxDealSize_2;
+   double exhaustlottrigger_3 = (LotSizeInput / gMinLot) * ExhaustMaxDealSize_3;
    
-   if(ExhaustMaxDealSize_2 > 0.0)
+   if(ExhaustMaxDealSize_3 > 0.0)
    {
-      if( currentorderlot > exhaustlottrigger_2)
+      if( currentorderlot > exhaustlottrigger_3)
       {
          gBudgetCheckEMGCY = true;
          gdebugD01 = currentorderlot;
-         gdebugD02 = exhaustlottrigger_2;
+         gdebugD02 = exhaustlottrigger_3;
          gdebugD03 = floatingNet;
          gdebugD04 = -2*nWNSL;
          
          //double lastWNSLLot = poslists.lstWNSL[nWNSL-1].lots;
          //if(lastWNSLLot >= exhaustlottrigger)
-         if(currentorderlot >= exhaustlottrigger_2 && floatingNet >= -2*nWNSL)
+         if(currentorderlot >= exhaustlottrigger_3 && floatingNet >= -2*nWNSL)
             {
             FastCloseNonEpochFromEndToTarget(poslists, 0);
             CancelAllPending();
@@ -5423,6 +5412,55 @@ void ExhaustBudgetCheckEMGCY(PosLists &poslists,double currentorderprice, double
             ResetCompression();
             BuildAllListsSorted(poslists);
             Print(" Line : ", __LINE__, " ", MagicNumber, " 'nWNSL' ", nWNSL, " '-4*nWNSL' ",-4*nWNSL, " currentorderlot ",  currentorderlot," floatingNet ",DoubleToString(floatingNet, 2));  
+            SendTelegramMessage(IntegerToString(MagicNumber) +
+                        "Deal qty : " + IntegerToString(nAll) 
+                        + ", MarginUsed: " + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN),0)
+                        + ", currentorderlot: " + DoubleToString(currentorderlot,2)
+                        );
+            return;
+            }            
+            
+      }
+   }
+   
+
+   
+   if(ExhaustMaxOpenDeals_2 >0 && nWNSL >= ExhaustMaxOpenDeals_2 )
+   {
+      if( totalLot > exhaustlottrigger_2)
+      {
+         gBudgetCheckEMGCY = true;
+         gdebugD01 = currentorderlot;
+         gdebugD02 = exhaustlottrigger_3;
+         gdebugD03 = floatingNet;
+         gdebugD04 = -1*nWNSL;
+         
+         //double lastWNSLLot = poslists.lstWNSL[nWNSL-1].lots;
+         //if(lastWNSLLot >= exhaustlottrigger)
+         if(totalLot > exhaustlottrigger_2 && floatingNet >= -1*nWNSL)
+            {
+            FastCloseNonEpochFromEndToTarget(poslists, 0);
+            CancelAllPending();
+            ResetBudgetExhausted();
+            ResetCompression();
+            BuildAllListsSorted(poslists);
+            Print(" #LINE# : ", __LINE__, " ", MagicNumber, " '-1*nWNSL' ",-1*nWNSL, " totalLot ",  totalLot," floatingNet ",DoubleToString(floatingNet, 2));  
+            SendTelegramMessage(IntegerToString(MagicNumber) +
+                        "Deal qty : " + IntegerToString(nAll) 
+                        + ", MarginUsed: " + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN),0)
+                        + ", currentorderlot: " + DoubleToString(currentorderlot,2)
+                        );
+            return;
+            }
+            
+         if(totalLot > exhaustlottrigger_3 && floatingNet >= -2*nWNSL)
+            {
+            FastCloseNonEpochFromEndToTarget(poslists, 0);
+            CancelAllPending();
+            ResetBudgetExhausted();
+            ResetCompression();
+            BuildAllListsSorted(poslists);
+            Print(" #LINE# : ", __LINE__, " ", MagicNumber, " 'nWNSL' ", nWNSL, " '-2*nWNSL' ",-2*nWNSL, " totalLot ",  totalLot," floatingNet ",DoubleToString(floatingNet, 2));  
             SendTelegramMessage(IntegerToString(MagicNumber) +
                         "Deal qty : " + IntegerToString(nAll) 
                         + ", MarginUsed: " + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN),0)
