@@ -118,7 +118,7 @@ void BuildProximityOrderOrder(int magicNumber, ulong &orderedTickets[])
    for(int i = 0; i < n; i++)
       orderedTickets[i] = tickets[i];
   }
-
+  
 //+------------------------------------------------------------------+
 //| Build the close order for every open position, sorted by         |
 //| absolute profit descending — biggest winner or loser closes      |
