@@ -107,8 +107,12 @@ bool ExecuteNextCloseStep(GridState &state)
          else // CLEANUP_CLOSE_POSITIONS — orders survive, grid stays "placed"
            {
             state.cycleActive = false;
-            if(InpEnableRefillInside || InpEnableRefillOutside)
+            if(InpInsideMaintenanceStyle != MAINTENANCE_NONE)
+              {
                state.refillNeeded = true;
+               ProcessInsideMaintenance(state);
+               state.refillNeeded = false;
+              }
            }
 
          LogCleanupComplete();

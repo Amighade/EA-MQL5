@@ -178,8 +178,7 @@ void UpdateOppositeGrid_ModeC(GridState &state)
 //+------------------------------------------------------------------+
 void UpdateOppositeGrid(GridState &state)
 {
-   if(!InpEnableLotIncrease) return;
-
+   if(InpLotIncreaseMode == LOT_INC_NONE) return;
    switch(InpLotIncreaseMode)
      {
       case LOT_INC_A: UpdateOppositeGrid_ModeA(state); break;

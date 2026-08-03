@@ -28,17 +28,19 @@ enum ENUM_INITIAL_SIZING
 //--- Brick 1: lot increase on opposite-side hit
 enum ENUM_LOT_INCREASE_MODE
   {
-   LOT_INC_A = 0,  // Implemented: pass-counter driven (1st pass partial-update, 2nd+ pass full replace)
-   LOT_INC_B = 1,  // STUB — reserved for future logic, currently no-op
-   LOT_INC_C = 2,  // STUB — reserved for future logic, currently no-op
+   LOT_INC_NONE = 0,  // No Increasing
+   LOT_INC_A = 1,  // Implemented: pass-counter driven (1st pass partial-update, 2nd+ pass full replace)
+   LOT_INC_B = 2,  // STUB — reserved for future logic, currently no-op
+   LOT_INC_C = 3,  // STUB — reserved for future logic, currently no-op
   };
 
 //--- Brick 2: shifting anchor
 enum ENUM_SHIFT_ANCHOR
   {
-   SHIFT_LAST_HIT     = 0,  // Shift to align with the last hit level
-   SHIFT_FARTHEST_HIT = 1,  // Shift to align with the farthest hit level
-   SHIFT_PRICE        = 2,  // Shift to align with current price
+   SHIFT_NONE           = 0,  // No Shift 
+   SHIFT_LAST_HIT       = 1,  // Shift to align with the last hit level
+   SHIFT_FARTHEST_HIT   = 2,  // Shift to align with the farthest hit level
+   SHIFT_PRICE          = 3,  // Shift to align with current price
   };
 
 //--- Brick 6: SL grid-snap mode
@@ -61,7 +63,17 @@ enum ENUM_LOT_MODE
    LOT_HALF = 1,  // Half ladder/count (low margin fallback)
   };
 
-enum ENUM_INSIDE_REFILL_STYLE { INSIDE_THRESHOLD = 0, INSIDE_FOLLOW_PRICE = 1, INSIDE_REVISIT = 2, INSIDE_PASS_REFILL = 3 };
+enum ENUM_INSIDE_MAINTENANCE_STYLE { MAINTENANCE_NONE = 0, MAINTENANCE_THRESHOLD = 1, MAINTENANCE_FOLLOW_PRICE = 2 };
+enum ENUM_INSIDE_STRATEGY_STYLE    { STRATEGY_NONE = 0, STRATEGY_REVISIT = 1, STRATEGY_PASS_REFILL = 2 };
+enum ENUM_OUTSIDE_REFILL_STYLE { OUTSIDE_NONE = 0, OUTSIDE_FIXED = 1, OUTSIDE_LAST_LOT = 2 };
+
+enum ENUM_REVISIT_LOT_STYLE
+{
+   REVISIT_FIXED     = 0,   // always InpFixedLot, ignores visit count
+   REVISIT_LINEAR    = 1,   // baseLot x (visits+1)
+   REVISIT_STEP      = 2,   // baseLot x (1 + InpRevisitLotStep x visits)
+   REVISIT_FIBONACCI = 3    // baseLot x fib(visits+1)
+};
   
 double InpCommissionPerLot = 0.0;
 //+------------------------------------------------------------------+
@@ -85,25 +97,23 @@ input double InpFixedLot       = 0.01; // Fixed: lot size for every level (also 
 input double InpPassRefillLotAdd = 0.0;   // Pass refill: amount added to a level's original lot on each reversal
 
 //--- BRICK 1: Lot increase on opposite-side hit -----------------------
-input bool   InpEnableLotIncrease  = false;    // Increase lot sizing on opposite-side hit? (No = lots never change)
-input ENUM_LOT_INCREASE_MODE InpLotIncreaseMode = LOT_INC_A; // Sub-option if enabled (only A is implemented)
+input ENUM_LOT_INCREASE_MODE InpLotIncreaseMode = LOT_INC_NONE; // No Increasing
 
 //--- BRICK 2: Shifting on gap ------------------------------------------
-input bool   InpEnableShifting     = false;    // Shift grid when a gap appears after a hit?
-input ENUM_SHIFT_ANCHOR InpShiftAnchor = SHIFT_LAST_HIT; // Anchor used if shifting enabled
+input ENUM_SHIFT_ANCHOR InpShiftAnchor = SHIFT_NONE; // Anchor used if shifting enabled
 
 //--- BRICK 3: Recentering ----------------------------------------------
 input bool   InpEnableRecentering  = false;    // Recenter grid when fresh and off-center?
 input double InpThresholdFactor    = 3.0;      // Recenter zone divisor (gap / factor = trigger threshold)
 
-
-input ENUM_INSIDE_REFILL_STYLE InpInsideRefillStyle = INSIDE_THRESHOLD;  // Inside refill style: threshold, follow-price, or revisit
 //--- BRICK 4: Refill inside gap -----------------------------------------
-input bool   InpEnableRefillInside  = false;   // Refill inside the gap (between nearest BUY/SELL) when empty?
+input ENUM_INSIDE_MAINTENANCE_STYLE InpInsideMaintenanceStyle = MAINTENANCE_NONE;
+input ENUM_INSIDE_STRATEGY_STYLE    InpInsideStrategyStyle    = STRATEGY_NONE;
+input ENUM_REVISIT_LOT_STYLE InpRevisitLotStyle = REVISIT_LINEAR;  // Revisit style: lot growth formula
+input double                 InpRevisitLotStep  = 0.5;             // Revisit style: growth rate, used by REVISIT_STEP only
+input double                 InpRevisitLotMax   = 0.20;            // Revisit style: hard lot cap, applied to every formula
 //--- BRICK 5: Refill outside range --------------------------------------
-input bool   InpEnableRefillOutside = false;   // Refill outside levels when count drops below InpMinGridLevels?
-                                                // NOTE: keep InpEnableShifting = false when this is on.
-                                                // NOTE: keep InpEnableLotIncrease = false when either refill brick is on.
+input ENUM_OUTSIDE_REFILL_STYLE InpOutsideRefillStyle = OUTSIDE_NONE;   // Refill outside levels when count drops below InpMinGridLevels?
 
 //--- BRICK 6: SL (breakeven-lock) ---------------------------------------
 input bool   InpEnableSL           = false;    // Add SL to winning side once armed?

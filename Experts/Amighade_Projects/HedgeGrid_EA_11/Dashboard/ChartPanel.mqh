@@ -220,11 +220,12 @@ void UpdateDashboard(const GridState &state)
                state.slWinnerSide == 0 ? clrLime :
                state.slWinnerSide == 1 ? clrMagenta : clrSilver
                );
-               
+
    string bricks = StringFormat("L%s S%s R%s I%s O%s",
-      InpEnableLotIncrease  ?"+":"-", InpEnableShifting     ?"+":"-",
-      InpEnableRecentering  ?"+":"-", InpEnableRefillInside ?"+":"-",
-      InpEnableRefillOutside?"+":"-");
+      InpLotIncreaseMode != LOT_INC_NONE  ?"+":"-", InpShiftAnchor != SHIFT_NONE ?"+":"-",
+      InpEnableRecentering  ?"+":"-",
+      (InpInsideMaintenanceStyle != MAINTENANCE_NONE || InpInsideStrategyStyle != STRATEGY_NONE) ?"+":"-",
+      InpOutsideRefillStyle != OUTSIDE_NONE ?"+":"-");
    HG_UpdateVal(PANEL_PREFIX "V30", bricks, clrYellow, vx, RY(29));
 
    #undef RY

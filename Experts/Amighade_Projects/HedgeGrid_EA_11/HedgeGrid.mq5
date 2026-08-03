@@ -179,9 +179,14 @@ void OnTick()
       if(done)
         {
          ResetSLManager(g_state);
+         if(g_state.refillNeeded)
+           {
+            ProcessInsideMaintenance(g_state);
+            g_state.refillNeeded = false;
+           }
         }
      }
-   
+  
    // Phantom grid: state believes a grid exists, broker has nothing.
    if(g_state.gridPlaced && !g_state.cleanupInProgress &&
       CountPositions(g_state.magicNumber) == 0 &&
@@ -260,6 +265,11 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       if(done)
         {
          ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
+         if(g_state.refillNeeded)
+           {
+            ProcessInsideMaintenance(g_state);
+            g_state.refillNeeded = false;
+           }
         }
       return;
      }
@@ -283,6 +293,11 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       if(done)
         {
          ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
+         if(g_state.refillNeeded)
+           {
+            ProcessInsideMaintenance(g_state);
+            g_state.refillNeeded = false;
+           }
         }
       return;
      }
@@ -316,7 +331,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    UpdateOppositeGrid(g_state);
    ShiftGrid(g_state);
 
-   ProcessInsideRefill(g_state);
+   ProcessInsideStrategy(g_state);
    RefillOutside(g_state);
 
    // Brick 6 — check immediately after a fill too (not just OnTick),

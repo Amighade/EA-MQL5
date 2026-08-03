@@ -111,7 +111,7 @@ void RebuildOppositeGrid(ENUM_ORDER_TYPE hitDirection,
 //+------------------------------------------------------------------+
 void ShiftGrid(GridState &state)
 {
-   if(!InpEnableShifting) return;
+   if(InpShiftAnchor == SHIFT_NONE) return;
 
    double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double oldAnchor     = (state.lastHitDirection == ORDER_TYPE_BUY) ?
