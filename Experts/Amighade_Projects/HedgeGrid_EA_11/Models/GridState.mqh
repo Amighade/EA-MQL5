@@ -12,6 +12,7 @@ enum EA_MODE
 
 struct GridState
   {
+   bool           outsideRefillPending;
    //--- Cycle state
    bool           cycleActive;
    bool           gridPlaced;

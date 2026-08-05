@@ -225,6 +225,12 @@ void OnTick()
    // continuous SL arm/trail check
    if(g_state.cycleActive)
       ProcessSLManager(g_state);
+   
+   if(g_state.outsideRefillPending)
+     {
+      RefillOutside(g_state);
+      g_state.outsideRefillPending = false;
+     }
 }
 
 //+------------------------------------------------------------------+
@@ -333,7 +339,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 
    ProcessInsideStrategy(g_state);
       
-   RefillOutside(g_state);
+   // was: RefillOutside(g_state);
+   g_state.outsideRefillPending = true;
 
    // Brick 6 — check immediately after a fill too (not just OnTick),
    // so a newly-profitable basket doesn't wait for the next tick to arm.
