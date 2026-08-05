@@ -304,7 +304,7 @@ void TrailWall(GridState &state)
    ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
    double slLevel = CalculateSLCandidate(winnerSide, state.magicNumber);
    
-   Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel);//AGH
+   //Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel);//AGH
    
    if(slLevel <= 0) return; // not safe yet, try again next tick
 
