@@ -25,6 +25,96 @@
 //| SHARED ORDER QUERY HELPERS                                       |
 //+------------------------------------------------------------------+
 
+struct OutsideRefillSnapshot
+{
+   int    sellOrderCount;
+   int    buyOrderCount;
+   double lowestSellOrderPrice;
+   double lowestSellOrderLot;
+   double highestBuyOrderPrice;
+   double highestBuyOrderLot;
+
+   int    positionCount;
+   double lowestSellPositionPrice;
+   double lowestSellPositionLot;
+   double highestBuyPositionPrice;
+   double highestBuyPositionLot;
+};
+
+void BuildOutsideRefillSnapshot(int magicNumber, OutsideRefillSnapshot &snap)
+{
+   snap.sellOrderCount          = 0;
+   snap.buyOrderCount           = 0;
+   snap.lowestSellOrderPrice    = DBL_MAX;
+   snap.lowestSellOrderLot      = 0.0;
+   snap.highestBuyOrderPrice    = 0.0;
+   snap.highestBuyOrderLot      = 0.0;
+
+   for(int i = 0; i < OrdersTotal(); i++)
+     {
+      ulong t = OrderGetTicket(i);
+      if(!OrderSelect(t)) continue;
+      if(OrderGetString(ORDER_SYMBOL) != _Symbol)     continue;
+      if(OrderGetInteger(ORDER_MAGIC) != magicNumber)  continue;
+
+      ENUM_ORDER_TYPE type = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      double p   = OrderGetDouble(ORDER_PRICE_OPEN);
+      double lot = OrderGetDouble(ORDER_VOLUME_CURRENT);
+
+      if(type == ORDER_TYPE_SELL_STOP)
+        {
+         snap.sellOrderCount++;
+         if(p < snap.lowestSellOrderPrice)
+           {
+            snap.lowestSellOrderPrice = p;
+            snap.lowestSellOrderLot   = lot;
+           }
+        }
+      else if(type == ORDER_TYPE_BUY_STOP)
+        {
+         snap.buyOrderCount++;
+         if(p > snap.highestBuyOrderPrice)
+           {
+            snap.highestBuyOrderPrice = p;
+            snap.highestBuyOrderLot   = lot;
+           }
+        }
+     }
+   if(snap.lowestSellOrderPrice == DBL_MAX) snap.lowestSellOrderPrice = 0.0;
+
+   snap.positionCount             = 0;
+   snap.lowestSellPositionPrice   = DBL_MAX;
+   snap.lowestSellPositionLot     = 0.0;
+   snap.highestBuyPositionPrice   = 0.0;
+   snap.highestBuyPositionLot     = 0.0;
+
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      ulong t = PositionGetTicket(i);
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)    continue;
+      if(PositionGetInteger(POSITION_MAGIC) != magicNumber) continue;
+
+      snap.positionCount++;
+
+      ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      double p   = PositionGetDouble(POSITION_PRICE_OPEN);
+      double lot = PositionGetDouble(POSITION_VOLUME);
+
+      if(type == POSITION_TYPE_SELL && p < snap.lowestSellPositionPrice)
+        {
+         snap.lowestSellPositionPrice = p;
+         snap.lowestSellPositionLot   = lot;
+        }
+      else if(type == POSITION_TYPE_BUY && p > snap.highestBuyPositionPrice)
+        {
+         snap.highestBuyPositionPrice = p;
+         snap.highestBuyPositionLot   = lot;
+        }
+     }
+   if(snap.lowestSellPositionPrice == DBL_MAX) snap.lowestSellPositionPrice = 0.0;
+}
+
 int CountOrderType(ENUM_ORDER_TYPE orderType, int magicNumber)
 {
    int count = 0;
@@ -72,22 +162,6 @@ double GetNearestSellStop(int magicNumber)
    return nearest;
 }
 
-/*
-double GetHighestBuyStop(int magicNumber)
-{
-   double highest = 0.0;
-   for(int i = 0; i < OrdersTotal(); i++)
-     {
-      ulong t = OrderGetTicket(i);
-      if(!OrderSelect(t)) continue;
-      if(OrderGetString(ORDER_SYMBOL)  != _Symbol)    continue;
-      if(OrderGetInteger(ORDER_MAGIC)  != magicNumber) continue;
-      if((ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE) != ORDER_TYPE_BUY_STOP) continue;
-      double p = OrderGetDouble(ORDER_PRICE_OPEN);
-      if(p > highest) highest = p;
-     }
-   return highest;
-}*/
 
 double GetHighestBuyStop(int magicNumber, double &outLot)
 {
@@ -412,7 +486,7 @@ void RefillOutside(GridState &state)
         }
      }
 }*/
-
+/*
 void RefillOutside(GridState &state)
 {
    if(InpOutsideRefillStyle == OUTSIDE_NONE) return;
@@ -472,6 +546,66 @@ void RefillOutside(GridState &state)
         }
      }
    Print(__FILE__ ," Line: ", __LINE__ , " currentBuyOut: ", currentBuyOut, "  outermostBuyOut: " , outermostBuyOut);//AGH
+}*/
+
+void RefillOutside(GridState &state)
+{
+   if(InpOutsideRefillStyle == OUTSIDE_NONE) return;
+
+   OutsideRefillSnapshot snap;
+   BuildOutsideRefillSnapshot(state.magicNumber, snap);
+
+   if(snap.sellOrderCount + snap.buyOrderCount == 0 && snap.positionCount == 0) return;
+
+   // ---- SELL side ----
+   if(snap.sellOrderCount < InpMinGridLevels)
+     {
+      double anchor = snap.lowestSellOrderPrice;
+      double anchorLot = snap.lowestSellOrderLot;
+      if(anchor <= 0)
+        {
+         anchor    = snap.lowestSellPositionPrice;
+         anchorLot = snap.lowestSellPositionLot;
+        }
+
+      if(anchor > 0)
+        {
+         double lot = (InpOutsideRefillStyle == OUTSIDE_FIXED) ? InpFixedLot : anchorLot;
+         if(lot <= 0) lot = InpFixedLot;
+
+         int needed = InpMaxGridLevels - snap.sellOrderCount;
+         for(int step = 1; step <= needed; step++)
+           {
+            double level = AlignToTick(_Symbol, anchor - InpGridSpacing * step);
+            PlaceSellStop(level, lot, state.magicNumber);
+           }
+        }
+     }
+
+   // ---- BUY side ----
+   if(snap.buyOrderCount < InpMinGridLevels)
+     {
+      double anchor = snap.highestBuyOrderPrice;
+      double anchorLot = snap.highestBuyOrderLot;
+      if(anchor <= 0)
+        {
+         anchor    = snap.highestBuyPositionPrice;
+         anchorLot = snap.highestBuyPositionLot;
+        }
+
+      if(anchor > 0)
+        {
+         double lot = (InpOutsideRefillStyle == OUTSIDE_FIXED) ? InpFixedLot : anchorLot;
+         if(lot <= 0) lot = InpFixedLot;
+
+         int needed = InpMaxGridLevels - snap.buyOrderCount;
+         for(int step = 1; step <= needed; step++)
+           {
+            double level = AlignToTick(_Symbol, anchor + InpGridSpacing * step);
+            PlaceBuyStop(level, lot, state.magicNumber);
+           }
+        }
+     }
 }
 //+------------------------------------------------------------------+
 //| BRICK 7 — place an opposite pending stop at the exact price of   |
