@@ -432,7 +432,7 @@ void RefillOutside(GridState &state)
       if(outermostSellOut <= 0)
          outermostSellOut = GetLowestSellPosition(state.magicNumber, outermostLot);
          
-         Print(__FILE__ ," Line: ", __LINE__ , "  outermostSellOut: " , outermostSellOut);//AGH
+      Print(__FILE__ ," Line: ", __LINE__ , "  outermostSellOut: " , outermostSellOut);//AGH
 
       if(outermostSellOut > 0)   // only proceed if orders OR positions gave us a real anchor
         {
@@ -456,7 +456,9 @@ void RefillOutside(GridState &state)
      {
       if(outermostBuyOut <= 0)
          outermostBuyOut = GetHighestBuyPosition(state.magicNumber, outermostLot);
-
+      
+      Print(__FILE__ ," Line: ", __LINE__ , "  outermostSellOut: " , outermostSellOut);//AGH
+      
       if(outermostBuyOut > 0)   // only proceed if orders OR positions gave us a real anchor
         {
          double lot = (InpOutsideRefillStyle == OUTSIDE_FIXED) ? InpFixedLot : outermostLot;
@@ -470,6 +472,7 @@ void RefillOutside(GridState &state)
            }
         }
      }
+   Print(__FILE__ ," Line: ", __LINE__ , "  outermostSellOut: " , outermostSellOut);//AGH
 }
 //+------------------------------------------------------------------+
 //| BRICK 7 — place an opposite pending stop at the exact price of   |
