@@ -332,6 +332,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    ShiftGrid(g_state);
 
    ProcessInsideStrategy(g_state);
+      
+   Print(__FILE__ ," Line: ", __LINE__);//AGH
    RefillOutside(g_state);
 
    // Brick 6 — check immediately after a fill too (not just OnTick),

@@ -111,24 +111,6 @@ double GetHighestBuyStop(int magicNumber, double &outLot)
    return highest;
 }
 
-/*
-double GetLowestSellStop(int magicNumber)
-{
-   double lowest = DBL_MAX;
-   for(int i = 0; i < OrdersTotal(); i++)
-     {
-      ulong t = OrderGetTicket(i);
-      if(!OrderSelect(t)) continue;
-      if(OrderGetString(ORDER_SYMBOL)  != _Symbol)    continue;
-      if(OrderGetInteger(ORDER_MAGIC)  != magicNumber) continue;
-      if((ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE) != ORDER_TYPE_SELL_STOP) continue;
-      double p = OrderGetDouble(ORDER_PRICE_OPEN);
-      double lot = OrderGetDouble(ORDER_VOLUME_CURRENT)
-      if(p < lowest) lowest = p;
-     }
-   return (lowest == DBL_MAX) ? 0.0 : lowest;
-}*/
-
 double GetLowestSellStop(int magicNumber, double &outLot)
 {
    double lowest = DBL_MAX;
@@ -149,6 +131,65 @@ double GetLowestSellStop(int magicNumber, double &outLot)
         }
      }
    return (lowest == DBL_MAX) ? 0.0 : lowest;
+}
+
+int CountPositionType(ENUM_POSITION_TYPE posType, int magicNumber)
+{
+   int count = 0;
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      ulong t = PositionGetTicket(i);
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)     continue;
+      if(PositionGetInteger(POSITION_MAGIC) != magicNumber) continue;
+      if(PositionGetInteger(POSITION_TYPE)  != posType)     continue;
+      count++;
+     }
+   return count;
+}
+
+double GetLowestSellPosition(int magicNumber, double &outLot)
+{
+   double lowest = DBL_MAX;
+   outLot = 0.0;
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      ulong t = PositionGetTicket(i);
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)          continue;
+      if(PositionGetInteger(POSITION_MAGIC) != magicNumber)      continue;
+      if(PositionGetInteger(POSITION_TYPE)  != POSITION_TYPE_SELL) continue;
+      double p   = PositionGetDouble(POSITION_PRICE_OPEN);
+      double lot = PositionGetDouble(POSITION_VOLUME);
+      if(p < lowest)
+        {
+         lowest = p;
+         outLot = lot;
+        }
+     }
+   return (lowest == DBL_MAX) ? 0.0 : lowest;
+}
+
+double GetHighestBuyPosition(int magicNumber, double &outLot)
+{
+   double highest = 0.0;
+   outLot = 0.0;
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      ulong t = PositionGetTicket(i);
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)         continue;
+      if(PositionGetInteger(POSITION_MAGIC) != magicNumber)     continue;
+      if(PositionGetInteger(POSITION_TYPE)  != POSITION_TYPE_BUY) continue;
+      double p   = PositionGetDouble(POSITION_PRICE_OPEN);
+      double lot = PositionGetDouble(POSITION_VOLUME);
+      if(p > highest)
+        {
+         highest = p;
+         outLot = lot;
+        }
+     }
+   return highest;
 }
 //+------------------------------------------------------------------+
 //| SHARED PLACEMENT HELPER — places a BUY/SELL pair, price-outward, |
@@ -331,6 +372,7 @@ void RefillFollowPriceInside(GridState &state)
       }
 }
 
+/*
 void RefillOutside(GridState &state)
 {
    if(InpOutsideRefillStyle == OUTSIDE_NONE) return;
@@ -369,8 +411,66 @@ void RefillOutside(GridState &state)
          PlaceBuyStop(level, lot, state.magicNumber);
         }
      }
-}
+}*/
 
+void RefillOutside(GridState &state)
+{
+   if(InpOutsideRefillStyle == OUTSIDE_NONE) return;
+   
+   int    currentSell = CountOrderType(ORDER_TYPE_SELL_STOP, state.magicNumber);
+   int    currentBuy  = CountOrderType(ORDER_TYPE_BUY_STOP,  state.magicNumber);
+   if(currentBuy + currentSell == 0 && CountPositions(state.magicNumber) == 0) return;
+
+   // ---- SELL side ----
+   int    currentSellOut   = CountOrderType(ORDER_TYPE_SELL_STOP, state.magicNumber);
+   double outermostLot = 0.0;
+   double outermostSellOut = GetLowestSellStop(state.magicNumber, outermostLot);
+   
+   Print(__FILE__ ," Line: ", __LINE__ );//AGH
+   if(currentSellOut < InpMinGridLevels)
+     {
+      if(outermostSellOut <= 0)
+         outermostSellOut = GetLowestSellPosition(state.magicNumber, outermostLot);
+         
+         Print(__FILE__ ," Line: ", __LINE__ , "  outermostSellOut: " , outermostSellOut);//AGH
+
+      if(outermostSellOut > 0)   // only proceed if orders OR positions gave us a real anchor
+        {
+         double lot = (InpOutsideRefillStyle == OUTSIDE_FIXED) ? InpFixedLot : outermostLot;
+         if(lot <= 0) lot = InpFixedLot;
+
+         int needed = InpMaxGridLevels - currentSellOut;
+         for(int step = 1; step <= needed; step++)
+           {
+            double level = AlignToTick(_Symbol, outermostSellOut - InpGridSpacing * step);
+            PlaceSellStop(level, lot, state.magicNumber);
+           }
+        }
+     }
+
+   // ---- BUY side ----
+   int    currentBuyOut   = CountOrderType(ORDER_TYPE_BUY_STOP, state.magicNumber);
+   double outermostBuyOut = GetHighestBuyStop(state.magicNumber, outermostLot);
+
+   if(currentBuyOut < InpMinGridLevels)
+     {
+      if(outermostBuyOut <= 0)
+         outermostBuyOut = GetHighestBuyPosition(state.magicNumber, outermostLot);
+
+      if(outermostBuyOut > 0)   // only proceed if orders OR positions gave us a real anchor
+        {
+         double lot = (InpOutsideRefillStyle == OUTSIDE_FIXED) ? InpFixedLot : outermostLot;
+         if(lot <= 0) lot = InpFixedLot;
+
+         int needed = InpMaxGridLevels - currentBuyOut;
+         for(int step = 1; step <= needed; step++)
+           {
+            double level = AlignToTick(_Symbol, outermostBuyOut + InpGridSpacing * step);
+            PlaceBuyStop(level, lot, state.magicNumber);
+           }
+        }
+     }
+}
 //+------------------------------------------------------------------+
 //| BRICK 7 — place an opposite pending stop at the exact price of   |
 //| the level that just filled, sized via level-increment. This is   |
