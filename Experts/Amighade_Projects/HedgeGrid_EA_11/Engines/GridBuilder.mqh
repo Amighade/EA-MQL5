@@ -426,13 +426,10 @@ void RefillOutside(GridState &state)
    double outermostLot = 0.0;
    double outermostSellOut = GetLowestSellStop(state.magicNumber, outermostLot);
    
-   Print(__FILE__ ," Line: ", __LINE__ );//AGH
    if(currentSellOut < InpMinGridLevels)
      {
       if(outermostSellOut <= 0)
          outermostSellOut = GetLowestSellPosition(state.magicNumber, outermostLot);
-         
-      Print(__FILE__ ," Line: ", __LINE__ , "  outermostSellOut: " , outermostSellOut);//AGH
 
       if(outermostSellOut > 0)   // only proceed if orders OR positions gave us a real anchor
         {
@@ -440,6 +437,8 @@ void RefillOutside(GridState &state)
          if(lot <= 0) lot = InpFixedLot;
 
          int needed = InpMaxGridLevels - currentSellOut;
+         Print(__FILE__ ," Line: ", __LINE__ ," needed: ", needed," currentSellOut: ", currentSellOut, "  outermostSellOut: " , outermostSellOut);//AGH
+         
          for(int step = 1; step <= needed; step++)
            {
             double level = AlignToTick(_Symbol, outermostSellOut - InpGridSpacing * step);
@@ -447,6 +446,7 @@ void RefillOutside(GridState &state)
            }
         }
      }
+   Print(__FILE__ ," Line: ", __LINE__ ," currentSellOut: ", currentSellOut, "  outermostSellOut: " , outermostSellOut);//AGH
 
    // ---- BUY side ----
    int    currentBuyOut   = CountOrderType(ORDER_TYPE_BUY_STOP, state.magicNumber);
@@ -457,14 +457,13 @@ void RefillOutside(GridState &state)
       if(outermostBuyOut <= 0)
          outermostBuyOut = GetHighestBuyPosition(state.magicNumber, outermostLot);
       
-      Print(__FILE__ ," Line: ", __LINE__ , "  outermostSellOut: " , outermostSellOut);//AGH
-      
       if(outermostBuyOut > 0)   // only proceed if orders OR positions gave us a real anchor
         {
          double lot = (InpOutsideRefillStyle == OUTSIDE_FIXED) ? InpFixedLot : outermostLot;
          if(lot <= 0) lot = InpFixedLot;
 
          int needed = InpMaxGridLevels - currentBuyOut;
+         Print(__FILE__ ," Line: ", __LINE__ ," needed: ", needed, " currentBuyOut: ", currentBuyOut, "  outermostBuyOut: " , outermostBuyOut);//AGH
          for(int step = 1; step <= needed; step++)
            {
             double level = AlignToTick(_Symbol, outermostBuyOut + InpGridSpacing * step);
@@ -472,7 +471,7 @@ void RefillOutside(GridState &state)
            }
         }
      }
-   Print(__FILE__ ," Line: ", __LINE__ , "  outermostSellOut: " , outermostSellOut);//AGH
+   Print(__FILE__ ," Line: ", __LINE__ , " currentBuyOut: ", currentBuyOut, "  outermostBuyOut: " , outermostBuyOut);//AGH
 }
 //+------------------------------------------------------------------+
 //| BRICK 7 — place an opposite pending stop at the exact price of   |
