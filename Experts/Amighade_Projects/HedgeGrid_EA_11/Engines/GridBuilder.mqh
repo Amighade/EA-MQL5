@@ -554,6 +554,9 @@ void RefillOutside(GridState &state)
 
    OutsideRefillSnapshot snap;
    BuildOutsideRefillSnapshot(state.magicNumber, snap);
+   Print(__FILE__, " Line: ", __LINE__,
+      " sellOrderCount=", snap.sellOrderCount,
+      " buyOrderCount=", snap.buyOrderCount);
 
    if(snap.sellOrderCount + snap.buyOrderCount == 0 && snap.positionCount == 0) return;
 
