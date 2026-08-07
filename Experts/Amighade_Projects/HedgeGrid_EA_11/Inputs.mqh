@@ -46,8 +46,10 @@ enum ENUM_SHIFT_ANCHOR
 //--- Brick 6: SL grid-snap mode
 enum ENUM_SL_MODE
   {
-   SL_LAST_HIT_GRID = 0,  // SL = last hit's own grid line (clamped safe if needed)
-   SL_N_BACK_GRID   = 1,  // SL = N grid-steps back from last hit (clamped safe, depth-capped)
+   SL_NONE           = 0,  // No SL
+   SL_NO_GRID        = 1,  // SL = No grid line, clampe to first opportunity
+   SL_LAST_HIT_GRID  = 2,  // SL = last hit's own grid line (clamped safe if needed)
+   SL_N_BACK_GRID    = 3,  // SL = N grid-steps back from last hit (clamped safe, depth-capped)
   };
 
 //--- Brick 7: cleanup type after SL hit / safety stop
@@ -116,8 +118,9 @@ input double                 InpRevisitLotMax   = 0.20;            // Revisit st
 input ENUM_OUTSIDE_REFILL_STYLE InpOutsideRefillStyle = OUTSIDE_NONE;   // Refill outside levels when count drops below InpMinGridLevels?
 
 //--- BRICK 6: SL (breakeven-lock) ---------------------------------------
-input bool   InpEnableSL           = false;    // Add SL to winning side once armed?
-input ENUM_SL_MODE InpSLMode       = SL_LAST_HIT_GRID; // SL placement mode if enabled
+input ENUM_SL_MODE InpSLArmMode   = SL_NONE;      // SL mode used when first arming
+input ENUM_SL_MODE InpSLTrailMode = SL_NONE;      // SL mode used when trailing an already-armed SL
+
 input int    InpSLNBack            = 1;        // SL_N_BACK_GRID only: steps back from last hit (1 = last hit's own level)
 
 //--- BRICK 7: Cleanup type after SL hit / safety stop --------------------

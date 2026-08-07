@@ -129,56 +129,53 @@ bool SL_BrokerOK(int winnerSide, double candidate)
 //====================================================
 // MAIN GRID FEASIBILITY ENGINE
 //====================================================
-double SL_FindCandidate(SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide, int magicNumber)
+double SL_FindCandidate(SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide,
+                        int magicNumber, ENUM_SL_MODE mode, double currentSL = 0.0)
 {
    if(count <= 0)
       return 0;
 
    double anchor = SL_GetAnchorPrice(winnerSide, magicNumber);
+   int maxN = 2;
 
-   int maxN = 5;
-   
    //====================================================
-   // MODE 1: FIXED N (strict validation)
+   // MODE 1: last grid — ARM: nearest grid, no net check.
+   //                     TRAIL: advance one grid only if net there is positive.
    //====================================================
-   if(InpSLMode == SL_N_BACK_GRID)
-   /*{
-      double candidate = SL_GetGridLevel(anchor, InpSLNBack, winnerSide);
-
-      double net = SL_CalcNetBasket(pos, count, candidate);
-
-      if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
+   if(mode == SL_NO_GRID)
+     {
+      double candidate = SL_GetGridLevel(anchor, 1, winnerSide);
+      if(SL_BrokerOK(winnerSide, candidate))
          return candidate;
-
       return 0;
-   }*/
-   {
+     }
+   //====================================================
+   // MODE 2: FIXED N (strict validation)
+   //====================================================
+   if(mode == SL_N_BACK_GRID)
+     {
       for(int n = InpSLNBack; n >= 1; n--)
-      {
+        {
          double candidate = SL_GetGridLevel(anchor, n, winnerSide);
-   
          double net = SL_CalcNetBasket(pos, count, candidate);
-   
          if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
             return candidate;
-   
-         // monotonic assumption: break early if desired
-      }
-   }
+        }
+     }
+
    //====================================================
-   // MODE 2: AUTO SEARCH (first valid wins)
+   // MODE 3: AUTO SEARCH (first valid wins)
    //====================================================
-   for(int n = 1; n <= maxN; n++)
-   {
-      double candidate = SL_GetGridLevel(anchor, n, winnerSide);
-
-      double net = SL_CalcNetBasket(pos, count, candidate);
-
-      if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
-         return candidate;
-
-      // monotonic assumption: break early if desired
-   }
+   if(mode == SL_LAST_HIT_GRID)
+     {
+      for(int n = 1; n <= maxN; n++)
+        {
+         double candidate = SL_GetGridLevel(anchor, n, winnerSide);
+         double net = SL_CalcNetBasket(pos, count, candidate);
+         if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
+            return candidate;
+        }
+     }
 
    return 0;
 }

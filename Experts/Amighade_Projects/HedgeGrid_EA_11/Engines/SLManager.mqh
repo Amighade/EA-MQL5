@@ -124,22 +124,14 @@ double NetPnLAtCandidate(double candidateSL, ENUM_POSITION_TYPE winnerSide,
 //+------------------------------------------------------------------+
 //| Grid-line SL candidate search (Brick 6 core algorithm)            |
 //+------------------------------------------------------------------+
-double CalculateSLCandidate(ENUM_POSITION_TYPE winnerSide, int magicNumber)
-
+double CalculateSLCandidate(ENUM_POSITION_TYPE winnerSide, int magicNumber,
+                            ENUM_SL_MODE mode, double currentSL = 0.0)
 {
-
    SLPos list[];
-
    int count = CollectAllPositions(magicNumber, list);
-
-   if(count <= 0)
-
-      return 0;
-
-   return SL_FindCandidate(list, count, winnerSide, magicNumber);
-
+   if(count <= 0) return 0;
+   return SL_FindCandidate(list, count, winnerSide, magicNumber, mode, currentSL);
 }
-
 //+------------------------------------------------------------------+
 //| Apply SL to every ticket in the armed-winner snapshot.            |
 //| Returns applied count, or -1 if a modify failed and a safety      |
@@ -232,8 +224,7 @@ void ResetSLManager(GridState &state)
 void ArmSL(GridState &state)
 {
    ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
-   double slLevel = CalculateSLCandidate(winnerSide, state.magicNumber);
-   
+   double slLevel = CalculateSLCandidate(winnerSide, state.magicNumber, InpSLArmMode);
    //Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel);//AGH
    
    if(slLevel <= 0) return; // not safe yet, try again next tick
@@ -302,7 +293,7 @@ void TrailWall(GridState &state)
 {
    //ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
    ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
-   double slLevel = CalculateSLCandidate(winnerSide, state.magicNumber);
+   double slLevel = CalculateSLCandidate(winnerSide, state.magicNumber, InpSLTrailMode, state.slLevel);
    
    //Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel);//AGH
    
@@ -336,31 +327,6 @@ void TrailWall(GridState &state)
 //| while armed) — position set changed, so re-run the heavy safe-   |
 //| level search once and re-apply (Bug fix #6: not on every tick).  |
 //+------------------------------------------------------------------+
-void RecalcOnWinnerClose_orgn(GridState &state)
-{
-   if(!state.slWallArmed) return;
-
-   ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
-   double newSL = CalculateSLCandidate(winnerSide, state.magicNumber);
-
-   bool improved = (newSL > 0) && ((winnerSide == POSITION_TYPE_BUY) ?
-                   (newSL > state.slLevel) : (newSL < state.slLevel));
-
-   if(improved)
-     {
-      int applied = ApplySLToWinners(newSL, state);
-      if(applied < 0) return; // safety stop already triggered
-      if(applied > 0) state.slLevel = newSL;
-     }
-
-   if(AllWinnersClosed())
-     {
-      state.slAllWinnersClosed = true;
-      state.slWallArmed        = false;
-      LogDebug("[SLManager] All armed winners closed — signalling coordinator to start cleanup.");
-     }
-}
-
 void RecalcOnWinnerClose(GridState &state)
 {
    if(!state.slWallArmed) return;
@@ -382,13 +348,14 @@ void RecalcOnWinnerClose(GridState &state)
 //+------------------------------------------------------------------+
 void ProcessSLManager(GridState &state)
 {
-   if(!InpEnableSL) return;
+   if(state.slWallArmed)
+     {
+      if(InpSLTrailMode != SL_NONE) TrailWall(state);
+      return;
+     }
 
-   if(state.slWallArmed) { TrailWall(state); return; }
-
-   // Trigger: leading side currently profitable (see header note)
+   if(InpSLArmMode == SL_NONE) return;
    if(state.basketProfit <= 0) return;
    ArmSL(state);
 }
-
 #endif
