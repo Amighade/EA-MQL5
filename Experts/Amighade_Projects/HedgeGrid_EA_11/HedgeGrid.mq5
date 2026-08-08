@@ -364,9 +364,9 @@ void OnTimer()
 {
    UpdateDashboard(g_state);
 
-   ENUM_LOT_MODE newMode = CheckMargin(g_state);
-   if(newMode != g_state.lotMode && !g_state.cycleActive)
-      g_state.lotMode = newMode;
+   //ENUM_LOT_MODE newMode = CheckMargin(g_state);
+   //if(newMode != g_state.lotMode && !g_state.cycleActive)
+   //   g_state.lotMode = newMode;
 }
 
 //+------------------------------------------------------------------+
