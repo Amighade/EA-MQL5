@@ -541,6 +541,7 @@ void RefillOutside(GridState &state)
             int    level = snap.sellOrderCount + step;
             double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
             double price = AlignToTick(_Symbol, anchor - InpGridSpacing * step);
+            Print (__FILE__,__LINE__," level: ", level, " lot: ", lot);
             PlaceSellStop(price, lot, state.magicNumber);
            }
         }
@@ -564,6 +565,7 @@ void RefillOutside(GridState &state)
             int    level = snap.buyOrderCount + step;
             double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
             double price = AlignToTick(_Symbol, anchor + InpGridSpacing * step);
+            Print (__FILE__,__LINE__," level: ", level, " lot: ", lot);
             PlaceBuyStop(price, lot, state.magicNumber);
            }
         }

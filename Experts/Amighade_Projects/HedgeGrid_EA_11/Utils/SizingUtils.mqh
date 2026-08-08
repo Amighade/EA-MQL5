@@ -35,6 +35,7 @@ double GetLot_Ladder(int level, ENUM_LOT_MODE lotMode)
    //double lot = InpInitialLotStep * level;
    double lot = InpFixedLot + (InpInitialLotStep * (level - 1));
    lot = MathMin(lot, InpInitialLotCap); // Cap at maximum
+   Print (__FILE__,__LINE__," level: ", level, " lot: ", lot);
    return AlignVolume(_Symbol, lot);
   }
   
@@ -49,6 +50,7 @@ double GetLot_EXP(int level, ENUM_LOT_MODE lotMode)
 
    double lot = InpFixedLot + InpInitialLotStep * MathPow(level - 1, 1.5);
    lot = MathMin(lot, InpInitialLotCap); // Cap at maximum
+   Print (__FILE__,__LINE__," level: ", level, " lot: ", lot);
    return AlignVolume(_Symbol, lot);
   }
 //+------------------------------------------------------------------+
