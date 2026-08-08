@@ -116,7 +116,7 @@ void BuildOutsideRefillSnapshot(int magicNumber, OutsideRefillSnapshot &snap)
         }
       else if(type == POSITION_TYPE_BUY)
         {
-         snap.buyOrderCount++;
+         snap.buypositionCount++;
          if(p > snap.highestBuyPositionPrice)
            {
             snap.highestBuyPositionPrice = p;
@@ -554,6 +554,8 @@ void RefillOutside(GridState &state)
             Print (__FILE__,__LINE__," level: ", level);
             double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
             Print (__FILE__,__LINE__," lot: ", lot);
+            lot = MathMax(lot, snap.lowestSellOrderLot);
+            Print (__FILE__,__LINE__," lot: ", lot);
             double price = AlignToTick(_Symbol, anchor - InpGridSpacing * step);
             PlaceSellStop(price, lot, state.magicNumber);
            }
@@ -578,6 +580,8 @@ void RefillOutside(GridState &state)
             int    level = snap.buyOrderCount + snap.buypositionCount + step;
             Print (__FILE__,__LINE__," level: ", level);
             double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
+            Print (__FILE__,__LINE__," lot: ", lot);
+            lot = MathMax(lot, snap.highestBuyOrderLot);
             Print (__FILE__,__LINE__," lot: ", lot);
             double price = AlignToTick(_Symbol, anchor + InpGridSpacing * step);
             PlaceBuyStop(price, lot, state.magicNumber);
