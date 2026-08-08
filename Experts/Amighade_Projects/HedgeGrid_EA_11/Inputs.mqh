@@ -47,9 +47,10 @@ enum ENUM_SHIFT_ANCHOR
 enum ENUM_SL_MODE
   {
    SL_NONE           = 0,  // No SL
-   SL_NO_GRID        = 1,  // SL = No grid line, clampe to first opportunity
-   SL_LAST_HIT_GRID  = 2,  // SL = last hit's own grid line (clamped safe if needed)
-   SL_N_BACK_GRID    = 3,  // SL = N grid-steps back from last hit (clamped safe, depth-capped)
+   SL_P_LEVEL        = 1,  // SL = Fisrt Positive Level
+   SL_NO_GRID        = 2,  // SL = No grid line, clampe to first opportunity
+   SL_LAST_HIT_GRID  = 3,  // SL = last hit's own grid line (clamped safe if needed)
+   SL_N_BACK_GRID    = 4,  // SL = N grid-steps back from last hit (clamped safe, depth-capped)
   };
 
 //--- Brick 7: cleanup type after SL hit / safety stop
@@ -65,9 +66,26 @@ enum ENUM_LOT_MODE
    LOT_HALF = 1,  // Half ladder/count (low margin fallback)
   };
 
-enum ENUM_INSIDE_MAINTENANCE_STYLE { MAINTENANCE_NONE = 0, MAINTENANCE_THRESHOLD = 1, MAINTENANCE_FOLLOW_PRICE = 2 };
-enum ENUM_INSIDE_STRATEGY_STYLE    { STRATEGY_NONE = 0, STRATEGY_REVISIT = 1, STRATEGY_PASS_REFILL = 2 };
-enum ENUM_OUTSIDE_REFILL_STYLE { OUTSIDE_NONE = 0, OUTSIDE_FIXED = 1, OUTSIDE_LAST_LOT = 2 };
+enum ENUM_INSIDE_MAINTENANCE_STYLE 
+   { 
+   MAINTENANCE_NONE = 0, 
+   MAINTENANCE_THRESHOLD = 1, 
+   MAINTENANCE_FOLLOW_PRICE = 2 
+   };
+enum ENUM_INSIDE_STRATEGY_STYLE    
+   { 
+   STRATEGY_NONE = 0, 
+   STRATEGY_REVISIT = 1, 
+   STRATEGY_PASS_REFILL = 2 
+   };
+enum ENUM_OUTSIDE_REFILL_STYLE 
+   { 
+   OUTSIDE_NONE = 0, 
+   OUTSIDE_FIXED = 1, 
+   OUTSIDE_LAST_LOT = 2, 
+   OUTSIDE_LADDER = 3, 
+   OUTSIDE_EXP = 4 
+   };
 
 enum ENUM_REVISIT_LOT_STYLE
 {
