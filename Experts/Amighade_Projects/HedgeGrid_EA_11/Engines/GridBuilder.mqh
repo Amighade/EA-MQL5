@@ -33,7 +33,9 @@ struct OutsideRefillSnapshot
    double lowestSellOrderLot;
    double highestBuyOrderPrice;
    double highestBuyOrderLot;
-
+   
+   int    sellpositionCount;
+   int    buypositionCount;
    int    positionCount;
    double lowestSellPositionPrice;
    double lowestSellPositionLot;
@@ -82,6 +84,8 @@ void BuildOutsideRefillSnapshot(int magicNumber, OutsideRefillSnapshot &snap)
      }
    if(snap.lowestSellOrderPrice == DBL_MAX) snap.lowestSellOrderPrice = 0.0;
 
+   snap.sellpositionCount          = 0;
+   snap.buypositionCount           = 0;
    snap.positionCount             = 0;
    snap.lowestSellPositionPrice   = DBL_MAX;
    snap.lowestSellPositionLot     = 0.0;
@@ -100,16 +104,24 @@ void BuildOutsideRefillSnapshot(int magicNumber, OutsideRefillSnapshot &snap)
       ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
       double p   = PositionGetDouble(POSITION_PRICE_OPEN);
       double lot = PositionGetDouble(POSITION_VOLUME);
-
-      if(type == POSITION_TYPE_SELL && p < snap.lowestSellPositionPrice)
+      
+      if(type == POSITION_TYPE_SELL)
         {
-         snap.lowestSellPositionPrice = p;
-         snap.lowestSellPositionLot   = lot;
+         snap.sellpositionCount++;
+         if(p < snap.lowestSellPositionPrice)
+           {
+            snap.lowestSellPositionPrice = p;
+            snap.lowestSellPositionLot   = lot;
+           }
         }
-      else if(type == POSITION_TYPE_BUY && p > snap.highestBuyPositionPrice)
+      else if(type == POSITION_TYPE_BUY)
         {
-         snap.highestBuyPositionPrice = p;
-         snap.highestBuyPositionLot   = lot;
+         snap.buyOrderCount++;
+         if(p > snap.highestBuyPositionPrice)
+           {
+            snap.highestBuyPositionPrice = p;
+            snap.highestBuyPositionLot   = lot;
+           }
         }
      }
    if(snap.lowestSellPositionPrice == DBL_MAX) snap.lowestSellPositionPrice = 0.0;
@@ -538,7 +550,7 @@ void RefillOutside(GridState &state)
          int needed = InpMaxGridLevels - snap.sellOrderCount;
          for(int step = 1; step <= needed; step++)
            {
-            int    level = snap.sellOrderCount + step;
+            int    level = snap.sellOrderCount + snap.sellpositionCount + step;
             double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
             double price = AlignToTick(_Symbol, anchor - InpGridSpacing * step);
             Print (__FILE__,__LINE__," level: ", level, " lot: ", lot);
@@ -562,7 +574,7 @@ void RefillOutside(GridState &state)
          int needed = InpMaxGridLevels - snap.buyOrderCount;
          for(int step = 1; step <= needed; step++)
            {
-            int    level = snap.buyOrderCount + step;
+            int    level = snap.buyOrderCount + snap.buypositionCount + step;
             double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
             double price = AlignToTick(_Symbol, anchor + InpGridSpacing * step);
             Print (__FILE__,__LINE__," level: ", level, " lot: ", lot);
