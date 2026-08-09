@@ -163,7 +163,7 @@ double SL_FindCandidate(SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide,
      }
 
    //====================================================
-   // MODE 3: AUTO SEARCH (first valid wins)
+   // MODE 3: N GRID AUTO SEARCH (nearest-first valid wins)
    //====================================================
    if(mode == SL_LAST_HIT_GRID)
      {
@@ -176,7 +176,7 @@ double SL_FindCandidate(SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide,
         }
      }
    //====================================================
-   // MODE 4: FIXED N (strict validation)
+   // MODE 4: N GRID AUTO SEARCH (farthest-first valid wins)
    //====================================================
    if(mode == SL_N_BACK_GRID)
      {

@@ -47,10 +47,10 @@ enum ENUM_SHIFT_ANCHOR
 enum ENUM_SL_MODE
   {
    SL_NONE           = 0,  // No SL
-   SL_P_LEVEL        = 1,  // SL = Fisrt Positive Level
-   SL_NO_GRID        = 2,  // SL = No grid line, clampe to first opportunity
-   SL_LAST_HIT_GRID  = 3,  // SL = last hit's own grid line (clamped safe if needed)
-   SL_N_BACK_GRID    = 4,  // SL = N grid-steps back from last hit (clamped safe, depth-capped)
+   SL_P_LEVEL        = 1,  // SL = FIRST POSITIVE LEVEL (no grid)
+   SL_NO_GRID        = 2,  // SL = NEAREST GRID (no net check) 
+   SL_LAST_HIT_GRID  = 3,  // SL = AUTO SEARCH (nearest-first valid wins)
+   SL_N_BACK_GRID    = 4,  // SL = AUTO SEARCH (farthest-first valid wins)
   };
 
 //--- Brick 7: cleanup type after SL hit / safety stop
