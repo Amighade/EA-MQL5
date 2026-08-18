@@ -29,6 +29,7 @@
 #include "../Utils/DebugLogger.mqh"
 #include "../Utils/CloseOrderUtils.mqh"
 #include "../Utils/SafetyNet.mqh"
+#include "../Utils/PositionOrderSnapshot.mqh"
 
 //+------------------------------------------------------------------+
 //| Full state reset, preserving the magic number.                   |
@@ -122,6 +123,7 @@ bool ExecuteNextCloseStep(GridState &state)
      }
 
    ClosePosition(state.closeSequence[state.closeIndex]);
+   RefreshPositionSnapshot(state);
    state.closeIndex++;
    state.cleanupStep++;
    return false;

@@ -17,6 +17,7 @@
 #include "../Utils/DebugLogger.mqh"
 #include "../Utils/TradeUtils.mqh"
 #include "../Utils/LevelVisitUtils.mqh"
+#include "../Utils/PositionOrderSnapshot.mqh"
 //+------------------------------------------------------------------+
 //| Check if this is a direction switch from previous hit            |
 //+------------------------------------------------------------------+
@@ -96,7 +97,8 @@ bool ProcessOrderFill(ulong positionTicket, GridState &state)
    state.lastHitTicket     = positionTicket;
 
    RegisterLevelVisit(state, fillPrice, posType == POSITION_TYPE_BUY ? 1 : 0, lot);
-
+   RefreshPositionSnapshot(state);
+   
    // Farthest-hit tracking (Brick 2: SHIFT_FARTHEST_HIT)
    if(posType == POSITION_TYPE_BUY)
      {

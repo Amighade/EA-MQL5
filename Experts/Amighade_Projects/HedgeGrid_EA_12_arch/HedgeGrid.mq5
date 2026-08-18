@@ -39,6 +39,7 @@
 #include "Engines/SLManager.mqh"
 #include "Engines/CleanupReset.mqh"
 #include "Engines/Recentering.mqh"
+#include "Engines/RunawayGuard.mqh"
 #include "Dashboard/ChartPanel.mqh"
 #include "Utils/StatePersistence.mqh"
 
@@ -76,6 +77,27 @@ void CheckAndBuildGrid(GridState &state)
    LogDebug("[Coordinator] New candle, no grid present — grid built.");
 }
 
+//+------------------------------------------------------------------+
+//| Drives one cleanup step forward and handles what happens once    |
+//| it's fully done. Lives in the coordinator because it orchestrates |
+//| three engines together (CleanupReset, SLManager, GridBuilder's    |
+//| maintenance dispatch) — same reasoning as CheckAndBuildGrid.      |
+//| Returns true if cleanup finished this call, false if still going. |
+//+------------------------------------------------------------------+
+bool AdvanceCleanup(GridState &state)
+{
+   bool done = ExecuteNextCloseStep(state);
+   if(done)
+     {
+      ResetSLManager(state);
+      if(state.refillNeeded)
+        {
+         ProcessInsideMaintenance(state);
+         state.refillNeeded = false;
+        }
+     }
+   return done;
+}
 //+------------------------------------------------------------------+
 //| OnInit                                                            |
 //| Item 11: does NOT build a grid. Editing an input on a running     |
@@ -174,18 +196,7 @@ void OnTick()
 
    // Cleanup never got the transaction that should have kicked it off.
    if(g_state.cleanupInProgress && CountPositions(g_state.magicNumber) == 0)
-     {
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done)
-        {
-         ResetSLManager(g_state);
-         if(g_state.refillNeeded)
-           {
-            ProcessInsideMaintenance(g_state);
-            g_state.refillNeeded = false;
-           }
-        }
-     }
+      AdvanceCleanup(g_state);
   
    // Phantom grid: state believes a grid exists, broker has nothing.
    if(g_state.gridPlaced && !g_state.cleanupInProgress &&
@@ -267,16 +278,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    // ------------------------------------------------------------
    if(g_state.cleanupInProgress)
      {
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done)
-        {
-         ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
-         if(g_state.refillNeeded)
-           {
-            ProcessInsideMaintenance(g_state);
-            g_state.refillNeeded = false;
-           }
-        }
+      AdvanceCleanup(g_state);
       return;
      }
 
@@ -292,19 +294,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       dealEntry == DEAL_ENTRY_INOUT ||
       dealEntry == DEAL_ENTRY_OUT_BY)
      {
-      // SL disabled, or nothing armed, or an unexpected close (manual, etc.)
-      // — Bug fix "Big A/B": there must always be a cleanup trigger.
       StartCleanupSequence(g_state);
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done)
-        {
-         ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
-         if(g_state.refillNeeded)
-           {
-            ProcessInsideMaintenance(g_state);
-            g_state.refillNeeded = false;
-           }
-        }
+      AdvanceCleanup(g_state);
       return;
      }
 
@@ -328,6 +319,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
      }*/
 
    ProcessOrderFill(positionTicket, g_state);
+   UpdateRunawayStreak(g_state, g_state.lastHitDirection);
+   ProcessRunawayGuard(g_state);
 
    // Re-snapshot the armed-winner set on every new fill (closes the
    // "new fill mid-epoch" gap — confirmed: re-snapshot every time).
@@ -345,6 +338,15 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    // Brick 6 — check immediately after a fill too (not just OnTick),
    // so a newly-profitable basket doesn't wait for the next tick to arm.
    ProcessSLManager(g_state);
+
+   // Structural fix: any engine above (RunawayGuard now, potentially others
+   // later) may have called StartCleanupSequence as a side effect. Rather
+   // than requiring each one to also remember to call ExecuteNextCloseStep
+   // itself, the coordinator checks once, here, after everything else has
+   // run this fill — and drives cleanup forward if it's now in progress,
+   // no matter who started it.
+   if(g_state.cleanupInProgress)
+      AdvanceCleanup(g_state);
 
    LogHistory("ORDER_FILL",
               g_state.lastHitPrice,

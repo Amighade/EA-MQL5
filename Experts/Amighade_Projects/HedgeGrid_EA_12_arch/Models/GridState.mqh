@@ -89,6 +89,30 @@ struct GridState
    ulong          closeSequence[];
    int            closeIndex;
    
+   // prevents re-firing every fill once past threshold, until the streak actually breaks
+   int             runawayStreakCount;
+   ENUM_ORDER_TYPE runawayStreakDirection;
+   bool            runawayTriggered;
+   
+   // Refreshed in ProcessOrderFill, on every fill — safe, no settling delay
+   int    sellPositionCount;
+   int    buyPositionCount;
+   int    positionCount;
+   double lowestSellPositionPrice;
+   double lowestSellPositionLot;
+   double highestBuyPositionPrice;
+   double highestBuyPositionLot;
+   
+   // Refreshed only in RefillOutside itself, right before use — order pool
+   // can lag by one instant right after a fill, do NOT refresh these from
+   // ProcessOrderFill or anywhere else that runs synchronously mid-transaction
+   int    sellOrderCount;
+   int    buyOrderCount;
+   double lowestSellOrderPrice;
+   double lowestSellOrderLot;
+   double highestBuyOrderPrice;
+   double highestBuyOrderLot;   
+
   };
 
 void ResetGridState(GridState &state)
@@ -134,6 +158,20 @@ void ResetGridState(GridState &state)
    ArrayResize(state.runLevels, 0);
    ArrayResize(state.closeSequence, 0);
    state.closeIndex = 0;
+   state.sellPositionCount       = 0;
+   state.buyPositionCount        = 0;
+   state.positionCount           = 0;
+   state.lowestSellPositionPrice = 0.0;
+   state.lowestSellPositionLot   = 0.0;
+   state.highestBuyPositionPrice = 0.0;
+   state.highestBuyPositionLot   = 0.0;
+   
+   state.sellOrderCount       = 0;
+   state.buyOrderCount        = 0;
+   state.lowestSellOrderPrice = 0.0;
+   state.lowestSellOrderLot   = 0.0;
+   state.highestBuyOrderPrice = 0.0;
+   state.highestBuyOrderLot   = 0.0;
    // lastBarGridCheck / lastBarRecenter NOT reset — candle trackers persist across cycles
    // magicNumber NOT reset — set once in OnInit
   }

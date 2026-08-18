@@ -47,6 +47,7 @@ void SaveGridState(GridState &state)
    FileWriteInteger(fh, state.runSide);
 
    FileWriteDouble (fh, state.basketProfit);
+   FileWriteDouble (fh, state.basketNetProfit);
    FileWriteDouble (fh, state.basketBuyProfit);
    FileWriteDouble (fh, state.basketSellProfit);
 
@@ -127,6 +128,7 @@ bool LoadGridState(GridState &state)
    state.runSide            = FileReadInteger(fh);
 
    state.basketProfit       = FileReadDouble(fh);
+   state.basketNetProfit    = FileReadDouble(fh);
    state.basketBuyProfit    = FileReadDouble(fh);
    state.basketSellProfit   = FileReadDouble(fh);
 

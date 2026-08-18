@@ -142,7 +142,9 @@ double SL_FindCandidate(SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide,
    double minStop = MinStopDistancePrice(_Symbol);
    
    //====================================================
-   // MODE 1: no grid — nearest level                
+   // MODE 1: no grid — nearest positive level
+   // BUY winner: SL sits just below current bid (minimum broker distance).
+   // SELL winner: SL sits just above current ask (minimum broker distance).             
    //====================================================
    if(mode == SL_P_LEVEL)
      {
@@ -160,7 +162,6 @@ double SL_FindCandidate(SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide,
          if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
          return candidate;
          }
-      //if(winnerSide == POSITION_TYPE_BUY)
       //return (bid - minStop);
       //return (ask + minStop);
      }

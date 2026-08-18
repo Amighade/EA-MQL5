@@ -124,13 +124,13 @@ double NetPnLAtCandidate(double candidateSL, ENUM_POSITION_TYPE winnerSide,
 //+------------------------------------------------------------------+
 //| Grid-line SL candidate search (Brick 6 core algorithm)            |
 //+------------------------------------------------------------------+
-double CalculateSLCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide, int magicNumber,
-                            ENUM_SL_MODE mode)
+double CalculateSLCandidate(ENUM_POSITION_TYPE winnerSide, int magicNumber,
+                            ENUM_SL_MODE mode, double currentSL = 0.0)
 {
    SLPos list[];
    int count = CollectAllPositions(magicNumber, list);
    if(count <= 0) return 0;
-   return SL_FindCandidate(state, list, count, winnerSide, magicNumber, mode);
+   return SL_FindCandidate(list, count, winnerSide, magicNumber, mode, currentSL);
 }
 //+------------------------------------------------------------------+
 //| Apply SL to every ticket in the armed-winner snapshot.            |
@@ -224,7 +224,7 @@ void ResetSLManager(GridState &state)
 void ArmSL(GridState &state)
 {
    ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
-   double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLArmMode);
+   double slLevel = CalculateSLCandidate(winnerSide, state.magicNumber, InpSLArmMode);
    //Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel);//AGH
    
    if(slLevel <= 0) return; // not safe yet, try again next tick
@@ -293,7 +293,7 @@ void TrailWall(GridState &state)
 {
    //ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
    ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
-   double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLTrailMode);
+   double slLevel = CalculateSLCandidate(winnerSide, state.magicNumber, InpSLTrailMode, state.slLevel);
    
    //Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel);//AGH
    

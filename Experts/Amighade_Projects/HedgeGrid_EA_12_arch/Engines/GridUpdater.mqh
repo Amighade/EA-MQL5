@@ -161,7 +161,8 @@ void UpdateOppositeGrid_ModeA(GridState &state)
 //+------------------------------------------------------------------+
 void UpdateOppositeGrid_ModeB(GridState &state)
 {
-   // TODO: implement when a second lot-increase algorithm is defined.
+   double newLot = AlignVolume(_Symbol, state.lastHitLot + 1.0);
+   UpdateOppositeGrid_FirstPass(state.lastHitDirection, newLot, state);
 }
 
 //+------------------------------------------------------------------+

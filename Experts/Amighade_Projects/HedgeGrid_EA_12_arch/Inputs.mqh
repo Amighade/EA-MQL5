@@ -29,8 +29,8 @@ enum ENUM_INITIAL_SIZING
 enum ENUM_LOT_INCREASE_MODE
   {
    LOT_INC_NONE = 0,  // No Increasing
-   LOT_INC_A = 1,  // Implemented: pass-counter driven (1st pass partial-update, 2nd+ pass full replace)
-   LOT_INC_B = 2,  // STUB — reserved for future logic, currently no-op
+   LOT_INC_A = 1,  // Lot increase on opposite-side hit * 2
+   LOT_INC_B = 2,  // Lot increase on opposite-side hit + 2
    LOT_INC_C = 3,  // STUB — reserved for future logic, currently no-op
   };
 
@@ -94,7 +94,21 @@ enum ENUM_REVISIT_LOT_STYLE
    REVISIT_STEP      = 2,   // baseLot x (1 + InpRevisitLotStep x visits)
    REVISIT_FIBONACCI = 3    // baseLot x fib(visits+1)
 };
-  
+
+enum ENUM_RUNAWAY_TRIGGER
+{
+   RUNAWAY_TRIGGER_NONE        = 0,
+   RUNAWAY_TRIGGER_CONSECUTIVE = 1,
+   RUNAWAY_TRIGGER_GRID_DEPTH  = 2,
+   RUNAWAY_TRIGGER_PASSCOUNTER = 3
+};
+
+enum ENUM_RUNAWAY_ACTION
+{
+   RUNAWAY_ACTION_ADD_SL   = 0,   
+   RUNAWAY_ACTION_CLOSE_ALL = 1   
+};
+
 //double InpCommissionPerLot = 0.0;
 //+------------------------------------------------------------------+
 //| INPUT PARAMETERS                                                  |
@@ -117,7 +131,7 @@ input double InpFixedLot       = 0.01; // Fixed: lot size for every level (also 
 input double InpPassRefillLotAdd = 0.0;   // Pass refill: amount added to a level's original lot on each reversal
 
 //--- BRICK 1: Lot increase on opposite-side hit -----------------------
-input ENUM_LOT_INCREASE_MODE InpLotIncreaseMode = LOT_INC_NONE; // No Increasing
+input ENUM_LOT_INCREASE_MODE InpLotIncreaseMode = LOT_INC_NONE; // Lot increase on opposite-side hit
 
 //--- BRICK 2: Shifting on gap ------------------------------------------
 input ENUM_SHIFT_ANCHOR InpShiftAnchor = SHIFT_NONE; // Anchor used if shifting enabled
@@ -144,6 +158,10 @@ input int    InpSLNBack            = 1;        // SL_N_BACK_GRID only: steps bac
 //--- BRICK 7: Cleanup type after SL hit / safety stop --------------------
 input ENUM_CLEANUP_MODE InpCleanupMode = CLEANUP_CLOSE_ALL; // What "cleanup" means when triggered
 
+input ENUM_RUNAWAY_TRIGGER InpRunawayTrigger = RUNAWAY_TRIGGER_NONE;
+input ENUM_RUNAWAY_ACTION  InpRunawayAction  = RUNAWAY_ACTION_ADD_SL;
+input int                  InpRunawayN       = 5;
+
 //--- Margin
 input double InpMinAllowedMargin = 1000.0; // Minimum free margin to allow grid ($)
 
@@ -156,7 +174,8 @@ input string ExtraWindow1    = "";    // Extra window 1: HH:MM-HH:MM (GMT)
 input string ExtraWindow2    = "";    // Extra window 2: HH:MM-HH:MM (GMT)
 
 //--- Commission (used in SL / net PnL safety calculation)
-input double InpCommissionPerLot = 6.0;  // Commission per lot round-turn ($)
+input double InpCommissionPerLot = 0.0;  // Commission per lot round-turn ($)
+// gold 6
 
 //--- Magic Number (0 = auto from symbol + timeframe)
 input int    InpMagicNumber  = 0;     // Magic number (0 = auto-generate)

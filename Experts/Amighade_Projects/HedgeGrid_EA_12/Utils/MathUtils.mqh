@@ -191,6 +191,40 @@ void CalculateBasketProfits(GridState &state)
    state.basketBuyProfit  = buyProfit;
    state.basketSellProfit = sellProfit;
 }
+/*
+void CalculateBasketProfits(GridState &state)
+{
+   double totalProfit    = 0.0;
+   double buyProfit      = 0.0;
+   double sellProfit     = 0.0;
+   double totalNetProfit = 0.0;
+
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != state.magicNumber) continue;
+
+      double profit = PositionGetDouble(POSITION_PROFIT);
+      double lot    = PositionGetDouble(POSITION_VOLUME);
+      totalProfit  += profit;
+
+      // Unified with SL_CalcNetBasket's formula — same InpCommissionPerLot,
+      // same single per-lot deduction, no separate entry/exit tracking.
+      totalNetProfit += profit - (InpCommissionPerLot * lot);
+
+      ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      if(type == POSITION_TYPE_BUY)
+         buyProfit += profit;
+      else if(type == POSITION_TYPE_SELL)
+         sellProfit += profit;
+     }
+
+   state.basketProfit     = totalProfit;
+   state.basketBuyProfit  = buyProfit;
+   state.basketSellProfit = sellProfit;
+}*/
 //+------------------------------------------------------------------+
 //| Auto-generate magic number from symbol + timeframe               |
 //| Matches logic from CandleMultiOrder BuildMagicNumber()           |

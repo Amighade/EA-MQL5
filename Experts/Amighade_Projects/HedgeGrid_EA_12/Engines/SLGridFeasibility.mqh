@@ -129,8 +129,8 @@ bool SL_BrokerOK(int winnerSide, double candidate)
 //====================================================
 // MAIN GRID FEASIBILITY ENGINE
 //====================================================
-double SL_FindCandidate(SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide,
-                        int magicNumber, ENUM_SL_MODE mode, double currentSL = 0.0)
+double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide,
+                        int magicNumber, ENUM_SL_MODE mode)
 {
    if(count <= 0)
       return 0;
@@ -142,26 +142,25 @@ double SL_FindCandidate(SLPos &pos[], int count, ENUM_POSITION_TYPE winnerSide,
    double minStop = MinStopDistancePrice(_Symbol);
    
    //====================================================
-   // MODE 1: no grid — nearest positive level
-   // BUY winner: SL sits just below current bid (minimum broker distance).
-   // SELL winner: SL sits just above current ask (minimum broker distance).             
+   // MODE 1: no grid — nearest level                
    //====================================================
    if(mode == SL_P_LEVEL)
      {
       if(winnerSide == POSITION_TYPE_BUY)
          {
          double candidate = bid - minStop;
-         double net = SL_CalcNetBasket(pos, count, candidate);
+         double net = state.basketNetProfit;
          if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
          return candidate;
          }
       else if(winnerSide == POSITION_TYPE_SELL)
          {
          double candidate = ask + minStop;
-         double net = SL_CalcNetBasket(pos, count, candidate);
+         double net = state.basketNetProfit;
          if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
          return candidate;
          }
+      //if(winnerSide == POSITION_TYPE_BUY)
       //return (bid - minStop);
       //return (ask + minStop);
      }
