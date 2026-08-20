@@ -141,6 +141,8 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double minStop = MinStopDistancePrice(_Symbol);
    double currentSL = state.slLevel;
+   double net = state.basketNetProfit;
+   if (InpRunawayN > 0 && state.passCounter >= InpRunawayN) net = state.basketProfit;
    
    //====================================================
    // MODE 1: no grid — nearest level                
@@ -150,14 +152,12 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
       if(winnerSide == POSITION_TYPE_BUY)
          {
          double candidate = bid - minStop;
-         double net = state.basketNetProfit;
          if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
          return candidate;
          }
       else if(winnerSide == POSITION_TYPE_SELL)
          {
          double candidate = ask + minStop;
-         double net = state.basketNetProfit;
          if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
          return candidate;
          }
@@ -229,7 +229,6 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
      {
       for(int n = 1; n <= maxN; n++)
         {
-         double net = state.basketNetProfit;
          double candidate = SL_GetGridLevel(anchor, n, winnerSide);
          if(currentSL > 0)   // trailing — never accept a candidate that isn't progress
            {
@@ -259,7 +258,6 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
      {
       for(int n = InpSLNBack; n >= 1; n--)
         {
-         double net = state.basketNetProfit;
          double candidate = SL_GetGridLevel(anchor, n, winnerSide);
          if(currentSL > 0)
            {
