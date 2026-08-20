@@ -171,9 +171,11 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
    if(mode == SL_NO_GRID)
      {
       double candidate = SL_GetGridLevel(anchor, 1, winnerSide);
-      Print(__FILE__, " Line: ", __LINE__, "  anchor: ", anchor, " candidate: ", candidate,
-      " winnerSide: ", (winnerSide==POSITION_TYPE_BUY?"BUY":"SELL"),
-      " brokerOK: ", SL_BrokerOK(winnerSide, candidate));
+      Print(__FILE__, " Line: ", __LINE__,
+            "  anchor: ", anchor, " candidate: ", candidate,
+            " winnerSide: ", (winnerSide==POSITION_TYPE_BUY?"BUY":"SELL"),
+            " bid: ", bid, " ask: ", ask, " minStop: ", minStop,
+            " brokerOK: ", SL_BrokerOK(winnerSide, candidate));
       if(SL_BrokerOK(winnerSide, candidate))
          return candidate;
       return 0;
