@@ -349,6 +349,9 @@ void RecalcOnWinnerClose(GridState &state)
 //+------------------------------------------------------------------+
 void ProcessSLManager(GridState &state)
 {
+   double net = state.basketProfit;
+   //if (InpRunawayN > 0 && state.passCounter >= InpRunawayN) net = state.basketProfit;
+   
    if(state.slWallArmed)
      {
       if(InpSLTrailMode != SL_NONE) TrailWall(state);
@@ -356,7 +359,7 @@ void ProcessSLManager(GridState &state)
      }
 
    if(InpSLArmMode == SL_NONE) return;
-   if(state.basketProfit <= 0) return;
+   if(net <= 0) return;
    ArmSL(state);
 }
 #endif
