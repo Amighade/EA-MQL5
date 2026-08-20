@@ -71,7 +71,7 @@ void CheckAndBuildGrid(GridState &state)
       LogDebug("[Coordinator] Margin still insufficient — skipping build this candle.");
       return;
      }
-   Print(__FILE__,__LINE__," state.gridPlaced: ",state.gridPlaced);
+   //Print(__FILE__,__LINE__," state.gridPlaced: ",state.gridPlaced);
    BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), state.lotMode, state);
    LogDebug("[Coordinator] New candle, no grid present — grid built.");
 }

@@ -529,9 +529,7 @@ void RefillOutside(GridState &state)
    OutsideRefillSnapshot snap;
    BuildOutsideRefillSnapshot(state.magicNumber, snap);
 
-   Print(__FILE__, " Line: ", __LINE__,
-      " sellOrderCount=", snap.sellOrderCount,
-      " buyOrderCount=", snap.buyOrderCount);
+   //Print(__FILE__, " Line: ", __LINE__, " sellOrderCount=", snap.sellOrderCount, " buyOrderCount=", snap.buyOrderCount);
 
    if(snap.sellOrderCount + snap.buyOrderCount == 0 && snap.positionCount == 0) return;
 
@@ -551,11 +549,11 @@ void RefillOutside(GridState &state)
          for(int step = 1; step <= needed; step++)
            {
             int    level = snap.sellOrderCount + snap.sellpositionCount + step;
-            Print (__FILE__,__LINE__," level: ", level);
+            //Print (__FILE__,__LINE__," level: ", level);
             double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
-            Print (__FILE__,__LINE__," lot: ", lot);
+            //Print (__FILE__,__LINE__," lot: ", lot);
             lot = MathMax(lot, snap.lowestSellOrderLot);
-            Print (__FILE__,__LINE__," lot: ", lot);
+            //Print (__FILE__,__LINE__," lot: ", lot);
             double price = AlignToTick(_Symbol, anchor - InpGridSpacing * step);
             PlaceSellStop(price, lot, state.magicNumber);
            }
@@ -578,11 +576,11 @@ void RefillOutside(GridState &state)
          for(int step = 1; step <= needed; step++)
            {
             int    level = snap.buyOrderCount + snap.buypositionCount + step;
-            Print (__FILE__,__LINE__," level: ", level);
+            //Print (__FILE__,__LINE__," level: ", level);
             double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
-            Print (__FILE__,__LINE__," lot: ", lot);
+            //Print (__FILE__,__LINE__," lot: ", lot);
             lot = MathMax(lot, snap.highestBuyOrderLot);
-            Print (__FILE__,__LINE__," lot: ", lot);
+            //Print (__FILE__,__LINE__," lot: ", lot);
             double price = AlignToTick(_Symbol, anchor + InpGridSpacing * step);
             PlaceBuyStop(price, lot, state.magicNumber);
            }

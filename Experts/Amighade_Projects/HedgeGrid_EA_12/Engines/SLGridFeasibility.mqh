@@ -136,7 +136,7 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
       return 0;
 
    double anchor = SL_GetAnchorPrice(winnerSide, magicNumber);
-   int maxN = 2;
+   int maxN = 3;
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double minStop = MinStopDistancePrice(_Symbol);
