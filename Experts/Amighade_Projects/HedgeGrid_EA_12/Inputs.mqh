@@ -48,9 +48,9 @@ enum ENUM_SL_MODE
   {
    SL_NONE           = 0,  // No SL
    SL_P_LEVEL        = 1,  // SL = FIRST POSITIVE LEVEL (no grid)
-   SL_NO_GRID        = 2,  // SL = NEAREST GRID (no net check) 
-   SL_LAST_HIT_GRID  = 3,  // SL = AUTO SEARCH (nearest-first valid wins)
-   SL_N_BACK_GRID    = 4,  // SL = AUTO SEARCH (farthest-first valid wins)
+   SL_FIRST_GRID        = 2,  // SL = NEAREST GRID (no net check) 
+   SL_NEAREST_P_GRID  = 3,  // SL = AUTO SEARCH (nearest-first valid wins)
+   SL_FAREST_P_GRID    = 4,  // SL = AUTO SEARCH (farthest-first valid wins)
   };
 
 //--- Brick 7: cleanup type after SL hit / safety stop

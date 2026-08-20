@@ -327,6 +327,7 @@ void TrailWall(GridState &state)
 //| while armed) — position set changed, so re-run the heavy safe-   |
 //| level search once and re-apply (Bug fix #6: not on every tick).  |
 //+------------------------------------------------------------------+
+//to be checked
 void RecalcOnWinnerClose(GridState &state)
 {
    if(!state.slWallArmed) return;

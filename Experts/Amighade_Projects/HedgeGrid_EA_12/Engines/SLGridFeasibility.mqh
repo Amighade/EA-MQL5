@@ -140,6 +140,7 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double minStop = MinStopDistancePrice(_Symbol);
+   double currentSL = state.slLevel;
    
    //====================================================
    // MODE 1: no grid — nearest level                
@@ -168,7 +169,7 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
    //====================================================
    // MODE 2: last grid — nearest grid, no net check.             
    //====================================================
-   if(mode == SL_NO_GRID)
+   /*if(mode == SL_NO_GRID)
      {
       double candidate = SL_GetGridLevel(anchor, 1, winnerSide);
       Print(__FILE__, " Line: ", __LINE__,
@@ -179,12 +180,41 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
       if(SL_BrokerOK(winnerSide, candidate))
          return candidate;
       return 0;
+     }*/
+
+   if(mode == SL_FIRST_GRID)
+     {
+     double candidate = anchor;
+     if(InpGridSpacing <= 0) return 0;
+     
+     if(winnerSide == POSITION_TYPE_BUY)
+        {
+        double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+        while(candidate >= bid - minStop)
+            candidate -= InpGridSpacing;
+        }
+     else // POSITION_TYPE_SELL
+        {
+        double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+        while(candidate <= ask + minStop)
+            candidate += InpGridSpacing;
+        }
+      candidate = AlignToTick(_Symbol, candidate);
+      Print(__FILE__, " Line: ", __LINE__,
+            "  anchor: ", anchor, " candidate: ", candidate,
+            " winnerSide: ", (winnerSide==POSITION_TYPE_BUY?"BUY":"SELL"),
+            " bid: ", bid, " ask: ", ask, " minStop: ", minStop,
+            " brokerOK: ", SL_BrokerOK(winnerSide, candidate));
+   
+      if(SL_BrokerOK(winnerSide, candidate))
+         return candidate;
+      return 0;
      }
 
    //====================================================
    // MODE 3: N GRID AUTO SEARCH (nearest-first valid wins)
    //====================================================
-   if(mode == SL_LAST_HIT_GRID)
+   /*if(mode == SL_LAST_HIT_GRID)
      {
       for(int n = 1; n <= maxN; n++)
         {
@@ -193,11 +223,28 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
          if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
             return candidate;
         }
+     }*/
+        
+   if(mode == SL_NEAREST_P_GRID)
+     {
+      for(int n = 1; n <= maxN; n++)
+        {
+         double net = state.basketNetProfit;
+         double candidate = SL_GetGridLevel(anchor, n, winnerSide);
+         if(currentSL > 0)   // trailing — never accept a candidate that isn't progress
+           {
+            bool isProgress = (winnerSide == POSITION_TYPE_BUY) ?
+               (candidate > currentSL) : (candidate < currentSL);
+            if(!isProgress) continue;
+           }
+         if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
+            return candidate;
+        }
      }
    //====================================================
    // MODE 4: N GRID AUTO SEARCH (farthest-first valid wins)
    //====================================================
-   if(mode == SL_N_BACK_GRID)
+   /*if(mode == SL_N_BACK_GRID)
      {
       for(int n = InpSLNBack; n >= 1; n--)
         {
@@ -206,7 +253,25 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
          if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
             return candidate;
         }
+     }*/
+     
+   if(mode == SL_FAREST_P_GRID)
+     {
+      for(int n = InpSLNBack; n >= 1; n--)
+        {
+         double net = state.basketNetProfit;
+         double candidate = SL_GetGridLevel(anchor, n, winnerSide);
+         if(currentSL > 0)
+           {
+            bool isProgress = (winnerSide == POSITION_TYPE_BUY) ?
+               (candidate > currentSL) : (candidate < currentSL);
+            if(!isProgress) continue;
+           }
+         if(net >= 0.0 && SL_BrokerOK(winnerSide, candidate))
+            return candidate;
+        }
      }
+    
 
    return 0;
 }
