@@ -225,7 +225,7 @@ void ArmSL(GridState &state)
 {
    ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
    double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLArmMode);
-   Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel);//AGH
+   Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel, " basketNetProfit: ", state.basketNetProfit);//AGH
    
    if(slLevel <= 0) return; // not safe yet, try again next tick
 
@@ -295,7 +295,7 @@ void TrailWall(GridState &state)
    ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
    double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLTrailMode);
    
-   Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel);//AGH
+   Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel, " basketNetProfit: ", state.basketNetProfit);//AGH
    
    if(slLevel <= 0) return; // not safe yet, try again next tick
 
