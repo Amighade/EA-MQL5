@@ -200,6 +200,13 @@ double SL_FindCandidate(GridState &state, SLPos &pos[], int count, ENUM_POSITION
             candidate += InpGridSpacing;
         }
       candidate = AlignToTick(_Symbol, candidate);
+      
+      if(currentSL > 0)
+        {
+         bool isProgress = (winnerSide == POSITION_TYPE_BUY) ?
+            (candidate > currentSL) : (candidate < currentSL);
+         if(!isProgress) return 0;   // wouldn't be progress — don't move the SL backward
+        }
    
       if(SL_BrokerOK(winnerSide, candidate))
          return candidate;
