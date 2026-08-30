@@ -134,6 +134,7 @@ void ResetGridState(GridState &state)
    ArrayResize(state.runLevels, 0);
    ArrayResize(state.closeSequence, 0);
    state.closeIndex = 0;
+   state.outsideRefillPending = false;
    // lastBarGridCheck / lastBarRecenter NOT reset — candle trackers persist across cycles
    // magicNumber NOT reset — set once in OnInit
   }

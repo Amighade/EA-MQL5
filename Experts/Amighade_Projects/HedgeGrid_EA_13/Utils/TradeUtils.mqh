@@ -31,6 +31,7 @@ struct TradeActionResult
    bool   sent;
    uint   retcode;
    int    lastError;
+   ulong  order;
 };
 
 //+------------------------------------------------------------------+
@@ -180,6 +181,7 @@ TradeActionResult PlacePendingOrder(const string sym, ENUM_ORDER_TYPE orderType,
                             res.retcode == TRADE_RETCODE_NO_CHANGES);
    out.retcode   = res.retcode;
    out.lastError = GetLastError();
+   out.order = res.order;
 
    return out;
 }
@@ -201,7 +203,8 @@ ulong PlacePendingWithWidening(const string sym, ENUM_ORDER_TYPE orderType,
          TradeActionResult out = PlacePendingOrder(sym, orderType, lot, tryEntry, sl, tp, magicNumber);
 
          if(out.success)
-           {
+            return out.order;
+           /*{
             // Get the ticket of placed order
             for(int i = OrdersTotal()-1; i >= 0; i--)
               {
@@ -213,14 +216,12 @@ ulong PlacePendingWithWidening(const string sym, ENUM_ORDER_TYPE orderType,
                   return t;
               }
             return 0; // placed but couldn't get ticket
-           }         // Rebuild MqlTradeResult because MQL5 does not support compound literals
-
+           }        // Rebuild MqlTradeResult because MQL5 does not support compound literals
+            */ 
          MqlTradeResult res = {};
 
          res.retcode = out.retcode;
-
          SendFailAction action = ClassifySendFailure(out.sent, res, out.lastError);
-
          if(action == RETRY_SAME && attempt < 3) { Sleep(50 * attempt); continue; }
          if(action == RETRY_WIDEN) break; // try next step
          if(action == FAIL_FATAL)

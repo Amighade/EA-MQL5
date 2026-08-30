@@ -21,11 +21,12 @@ void BuildZigzagPositionOrder(int magicNumber, ulong &orderedTickets[])
    ulong  tickets[];
    double profits[];
    int    n = 0;
+   int    total = PositionsTotal();   // captured ONCE
 
-   ArrayResize(tickets, PositionsTotal());
-   ArrayResize(profits, PositionsTotal());
+   ArrayResize(tickets, total);
+   ArrayResize(profits, total);
 
-   for(int i = 0; i < PositionsTotal(); i++)
+   for(int i = 0; i < total; i++)     // loop bound is the SAME captured value
      {
       ulong t = PositionGetTicket(i);
       if(!PositionSelectByTicket(t)) continue;
@@ -79,11 +80,12 @@ void BuildProximityOrderOrder(int magicNumber, ulong &orderedTickets[])
    double dist[];
    int    n = 0;
    double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   int    total = OrdersTotal();      // captured ONCE
 
-   ArrayResize(tickets, OrdersTotal());
-   ArrayResize(dist,    OrdersTotal());
+   ArrayResize(tickets, total);
+   ArrayResize(dist,    total);
 
-   for(int i = 0; i < OrdersTotal(); i++)
+   for(int i = 0; i < total; i++)     // loop bound is the SAME captured value
      {
       ulong t = OrderGetTicket(i);
       if(!OrderSelect(t)) continue;
@@ -129,11 +131,12 @@ void BuildAbsProfitPositionOrder(int magicNumber, ulong &orderedTickets[])
    ulong  tickets[];
    double absProfits[];
    int    n = 0;
+   int    total = PositionsTotal();   // captured ONCE
 
-   ArrayResize(tickets, PositionsTotal());
-   ArrayResize(absProfits, PositionsTotal());
+   ArrayResize(tickets, total);
+   ArrayResize(absProfits, total);
 
-   for(int i = 0; i < PositionsTotal(); i++)
+   for(int i = 0; i < total; i++)     // loop bound is the SAME captured value
      {
       ulong t = PositionGetTicket(i);
       if(!PositionSelectByTicket(t)) continue;

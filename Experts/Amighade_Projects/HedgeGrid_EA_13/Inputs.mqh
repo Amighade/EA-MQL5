@@ -194,6 +194,5 @@ input int    InpTimerIntervalSec  = 1;     // Dashboard refresh interval (second
 //--- Logging
 input bool   InpEnableDebugLog    = true;  // Debug logging to Experts tab
 input bool   InpEnableHistoryLog  = true;  // History logging to CSV file
-input string InpHistoryLogFile    = "HedgeGrid_History.csv"; // CSV filename
 
 #endif
