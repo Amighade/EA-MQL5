@@ -292,45 +292,25 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
                         const MqlTradeRequest     &request,
                         const MqlTradeResult      &result)
 {
+   // Bug fix #3: only DEAL_ADD is relevant
    if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
    if(trans.symbol != _Symbol) return;
 
+   // FIX: Removed the rigid trans.deal_type filter block entirely.
+   // We select the deal ticket directly to let any close/partial close event pass through.
    if(!HistoryDealSelect(trans.deal)) return;
    ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
 
    // ------------------------------------------------------------
-   // CLEANUP STATE PROTECTION FILTER
+   // CLEANUP IN PROGRESS — close one position per confirmation.
+   // Closing always outranks opening: nothing else runs here.
    // ------------------------------------------------------------
    if(g_state.cleanupInProgress)
      {
       bool done = ExecuteNextCloseStep(g_state);
       if(done)
         {
-         ResetSLManager(g_state);
-         if(g_state.refillNeeded)
-           {
-            ProcessInsideMaintenance(g_state);
-            g_state.refillNeeded = false;
-           }
-        }
-      return; // Absolute early exit shield
-     }
-
-   ulong positionTicket = trans.position;
-   if(positionTicket == 0) return;
-
-   // ------------------------------------------------------------
-   // TRIGGER ZONE: Captured from any OUT transaction type
-   // ------------------------------------------------------------
-   if(dealEntry == DEAL_ENTRY_OUT ||
-      dealEntry == DEAL_ENTRY_INOUT ||
-      dealEntry == DEAL_ENTRY_OUT_BY)
-     {
-      StartCleanupSequence(g_state);
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done)
-        {
-         ResetSLManager(g_state);
+         ResetSLManager(g_state); 
          if(g_state.refillNeeded)
            {
             ProcessInsideMaintenance(g_state);
@@ -340,16 +320,42 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       return;
      }
 
-   if(dealEntry != DEAL_ENTRY_IN) return;
+   ulong positionTicket = trans.position;
+   if(positionTicket == 0) return;
 
    // ------------------------------------------------------------
-   // IDLE FLOW: Executes only on clean grid modifications
+   // A position CLOSED (deal entry OUT / INOUT / OUT_BY).
+   // Fixed: Partial closes and close-by transactions route correctly here now.
+   // ------------------------------------------------------------
+   if(dealEntry == DEAL_ENTRY_OUT ||
+      dealEntry == DEAL_ENTRY_INOUT ||
+      dealEntry == DEAL_ENTRY_OUT_BY)
+     {
+      StartCleanupSequence(g_state);
+      bool done = ExecuteNextCloseStep(g_state);
+      if(done)
+        {
+         ResetSLManager(g_state); 
+         if(g_state.refillNeeded)
+           {
+            ProcessInsideMaintenance(g_state);
+            g_state.refillNeeded = false;
+           }
+        }
+      return;
+     }
+
+   if(dealEntry != DEAL_ENTRY_IN) return; // if just A position opened
+
+   // ------------------------------------------------------------
+   // NORMAL FLOW — a new position opened.
    // ------------------------------------------------------------
    ProcessOrderFill(positionTicket, g_state);
    ReSnapshotIfArmed(g_state);
 
    UpdateOppositeGrid(g_state);
    ShiftGrid(g_state);
+
    ProcessInsideStrategy(g_state);
       
    g_state.outsideRefillPending = true;
@@ -365,6 +371,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
               g_state.sessionAllowed,
               AccountInfoDouble(ACCOUNT_MARGIN_FREE));
 }
+
 
 
 /*
