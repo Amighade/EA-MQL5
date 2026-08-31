@@ -114,7 +114,7 @@ enum ENUM_FIRST_LEVEL_SL_MODE
 input ENUM_TIMEFRAMES Timeframe        = (ENUM_TIMEFRAMES)0;
 input ENUM_GRID_ANCHOR_MODE InpGridAnchorMode = ANCHOR_CURRENT_PRICE;
 input ENUM_FIRST_LEVEL_SL_MODE InpFirstLevelSLMode  = FIRST_SL_NONE;
-input double                   InpFirstSLRangeFraction = 0.25;   // used only by FIRST_SL_RANGE_FRAC
+input double                   InpFirstSLRangeFraction = 0.25;
 
 //--- Grid Settings (core, always active)
 input double InpInitialGap    = 2.00;  // Gap between nearest BUY and SELL ($)

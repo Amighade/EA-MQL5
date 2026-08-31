@@ -257,6 +257,9 @@ ulong PlaceSellStop(double price, double lot, int magicNumber, double sl=0, doub
 //+------------------------------------------------------------------+
 bool DeleteOrder(ulong ticket)
 {
+   if(!OrderSelect(ticket))
+      return true;   // already gone (filled or already deleted) — nothing to do, not a failure
+
    MqlTradeRequest req = {};
    MqlTradeResult  res = {};
    req.action = TRADE_ACTION_REMOVE;
@@ -272,7 +275,6 @@ bool DeleteOrder(ulong ticket)
      }
    return true;
 }
-
 //+------------------------------------------------------------------+
 //| Delete ALL pending orders for this EA on this symbol             |
 //+------------------------------------------------------------------+
