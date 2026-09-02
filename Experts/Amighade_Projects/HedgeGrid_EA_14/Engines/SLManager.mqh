@@ -291,6 +291,8 @@ void TrailWall_orgn(GridState &state)
 
 void TrailWall(GridState &state)
 {
+   if(!state.slWallArmed) return;
+   
    //ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
    ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
    double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLTrailMode);
@@ -302,10 +304,35 @@ void TrailWall(GridState &state)
    SnapshotWinners(state.magicNumber, winnerSide);
    if(ArraySize(g_ArmedWinnerTickets) == 0) return;
 
+   if(state.slLevel > 0.0)
+     {
+      bool isProgress = (winnerSide == POSITION_TYPE_BUY) ? 
+                        (slLevel > state.slLevel) : (slLevel < state.slLevel);
+      if(!isProgress) return; // Discard candidate if it moves against existing protection
+     }
+
    int applied = ApplySLToWinners(slLevel, state);
    if(applied < 0) return; // safety stop already triggered
    if(applied == 0) return;
    
+   // FIXED: Cross-verify total chart footprint to maintain alignment safely
+   bool basketStillExists = false;
+   for(int i = 0; i < ArraySize(g_ArmedWinnerTickets); i++)
+     {
+      if(PositionSelectByTicket(g_ArmedWinnerTickets[i]))
+        {
+         basketStillExists = true;
+         break;
+        }
+     }
+
+   if(!basketStillExists)
+     {
+      ResetSLManager(state);
+      return;
+     }
+     
+   /*
    ulong t = g_ArmedWinnerTickets[0];
    if(!PositionSelectByTicket(t))
    {
@@ -314,13 +341,13 @@ void TrailWall(GridState &state)
    else
    {
    slLevel = PositionGetDouble(POSITION_SL);
+   */
    
    state.slWallArmed  = true;
    state.slApplied    = true;
    state.slLevel      = slLevel;
    state.slWinnerSide = (int)winnerSide;
    LogSLTriggered("SL_ARMED", slLevel);
-   }
 }
 //+------------------------------------------------------------------+
 //| Called by coordinator when an armed winner closes (DEAL_ENTRY_OUT|

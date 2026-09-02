@@ -52,7 +52,7 @@ void BuildOutsideRefillSnapshot(int magicNumber, OutsideRefillSnapshot &snap)
    snap.highestBuyOrderPrice    = 0.0;
    snap.highestBuyOrderLot      = 0.0;
 
-   for(int i = 0; i < OrdersTotal(); i++)
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
      {
       ulong t = OrderGetTicket(i);
       if(!OrderSelect(t)) continue;
@@ -92,7 +92,7 @@ void BuildOutsideRefillSnapshot(int magicNumber, OutsideRefillSnapshot &snap)
    snap.highestBuyPositionPrice   = 0.0;
    snap.highestBuyPositionLot     = 0.0;
 
-   for(int i = 0; i < PositionsTotal(); i++)
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       ulong t = PositionGetTicket(i);
       if(!PositionSelectByTicket(t)) continue;
@@ -587,7 +587,7 @@ void RefillOutside(GridState &state)
          anchorLot = snap.lowestSellPositionLot;
         }
       if(anchor > 0)
-        {
+        /*{
          int needed = InpMaxGridLevels - snap.sellOrderCount;
          for(int step = 1; step <= needed; step++)
            {
@@ -600,6 +600,16 @@ void RefillOutside(GridState &state)
             double price = AlignToTick(_Symbol, anchor - InpGridSpacing * step);
             PlaceSellStop(price, lot, state.magicNumber);
            }
+        }*/
+         {
+         // Logic Fix: Place exactly ONE outer order per transaction pulse event
+         int    level = snap.sellOrderCount + snap.sellpositionCount + 1;
+         double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
+         lot = MathMax(lot, snap.lowestSellOrderLot);
+         
+         double price = AlignToTick(_Symbol, anchor - InpGridSpacing);
+         PlaceSellStop(price, lot, state.magicNumber);
+         return; // Exit immediately, let the next trade transaction pulse handle the next level
         }
      }
 
@@ -614,7 +624,7 @@ void RefillOutside(GridState &state)
          anchorLot = snap.highestBuyPositionLot;
         }
       if(anchor > 0)
-        {
+        /*{
          int needed = InpMaxGridLevels - snap.buyOrderCount;
          for(int step = 1; step <= needed; step++)
            {
@@ -627,6 +637,16 @@ void RefillOutside(GridState &state)
             double price = AlignToTick(_Symbol, anchor + InpGridSpacing * step);
             PlaceBuyStop(price, lot, state.magicNumber);
            }
+        }*/
+         {
+         // Logic Fix: Place exactly ONE outer order per transaction pulse event
+         int    level = snap.buyOrderCount + snap.buypositionCount + 1;
+         double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
+         lot = MathMax(lot, snap.highestBuyOrderLot);
+         
+         double price = AlignToTick(_Symbol, anchor + InpGridSpacing);
+         PlaceBuyStop(price, lot, state.magicNumber);
+         return; // Exit immediately
         }
      }
 }

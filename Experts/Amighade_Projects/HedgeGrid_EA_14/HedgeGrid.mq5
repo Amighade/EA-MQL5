@@ -270,11 +270,13 @@ void OnTick()
    //if(g_state.cycleActive)
    //   ProcessSLManager(g_state);
    
+   /*
    if(g_state.outsideRefillPending)
      {
       RefillOutside(g_state);
       g_state.outsideRefillPending = false;
      }
+   */
 }
 
 //+------------------------------------------------------------------+
@@ -295,7 +297,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 {
    // FIXED GATEWAY: Pass both deal additions AND order deletions through
    if(trans.type != TRADE_TRANSACTION_DEAL_ADD && 
-      trans.type != TRADE_TRANSACTION_ORDER_DELETE) return;
+      trans.type != TRADE_TRANSACTION_ORDER_DELETE &&
+      trans.type != TRADE_TRANSACTION_ORDER_ADD) return;
       
    if(trans.symbol != _Symbol) return;
 
@@ -317,7 +320,29 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       return; // Absolute exit door for cleanup thread pulses
      }
 
-   // From this point down, only pure DEAL_ADD events matter for normal flow
+   // ------------------------------------------------------------
+   // ONE-BY-ONE PULSE LOOP INTERCEPTION PASS
+   // ------------------------------------------------------------
+   // Handle order deletions immediately when idle to process step refills
+   if(trans.type == TRADE_TRANSACTION_ORDER_DELETE)
+     {
+      RefillOutside(g_state);
+      g_state.outsideRefillPending = false;
+      return;
+     }
+   // Handle order additions ONLY if a trade cycle is active.
+   // This completely prevents fresh grid setups from misfiring during build pulses!
+   if(trans.type == TRADE_TRANSACTION_ORDER_ADD)
+     {
+      if(g_state.cycleActive)
+        {
+         RefillOutside(g_state);
+         g_state.outsideRefillPending = false;
+        }
+      return; // Terminate this pulse thread safely
+     }
+
+   // From this point down, ignore pending order signals and filter strictly for normal position flow
    if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
 
    if(!HistoryDealSelect(trans.deal)) return;
