@@ -121,65 +121,16 @@ bool ExecuteNextCloseStep(GridState &state)
       LogCleanupComplete();
       return true;
      }
-
-   // 3. If positions still exist, always close the very first valid position item in the array
-   ClosePosition(state.closeSequence[0]);
-   state.cleanupStep++;
+     
+   // 3. LOGIC FIX: Always attack the first item at index 0.
+   // If a pending order executes meanwhile, BuildAbsProfitPositionOrder will add it 
+   // to this array on the next pulse, forcing the EA to close it before exiting cleanup.
+   if(PositionSelectByTicket(state.closeSequence[0]))
+     {
+      ClosePosition(state.closeSequence[0]);
+      state.cleanupStep++;
+     }
    return false;
 }
-
-
-/*
-bool ExecuteNextCloseStep(GridState &state)
-{
-   if(!state.cleanupInProgress) return true;
-
-   // Skip any ticket that closed externally (SL/TP/manual) since the array was built
-   while(state.closeIndex < ArraySize(state.closeSequence) &&
-         !PositionSelectByTicket(state.closeSequence[state.closeIndex]))
-      state.closeIndex++;
-
-   if(state.closeIndex >= ArraySize(state.closeSequence))
-     {
-      // Array drained — rescan for anything left before declaring done
-      BuildAbsProfitPositionOrder(state.magicNumber, state.closeSequence);
-      state.closeIndex = 0;
-
-      if(ArraySize(state.closeSequence) == 0)
-        {
-         // Genuinely empty now — orders close after positions, same as you asked
-         if(state.cleanupType == CLEANUP_CLOSE_ALL)
-            DeleteAllOrders(state.magicNumber);   // unchanged function, unchanged internal order
-
-         state.cleanupInProgress = false;
-         state.cleanupStep       = 0;
-
-         if(state.cleanupType == CLEANUP_CLOSE_ALL)
-           {
-            ResetCycle(state);
-            state.gridPlaced = false; // next candle-open check rebuilds
-           }
-         else // CLEANUP_CLOSE_POSITIONS — orders survive, grid stays "placed"
-           {
-            state.cycleActive = false;
-            if(InpInsideMaintenanceStyle != MAINTENANCE_NONE)
-              {
-               state.refillNeeded = true;
-               ProcessInsideMaintenance(state);
-               state.refillNeeded = false;
-              }
-           }
-
-         LogCleanupComplete();
-         return true;
-        }
-      // rescan found something — fall through, close from the refreshed array below
-     }
-
-   ClosePosition(state.closeSequence[state.closeIndex]);
-   state.closeIndex++;
-   state.cleanupStep++;
-   return false;
-}*/
 
 #endif

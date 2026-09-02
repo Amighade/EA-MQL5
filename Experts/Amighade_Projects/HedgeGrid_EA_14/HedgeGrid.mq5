@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
 //| HedgeGrid.mq5                                                     |
-//| Main EA coordinator — "brick" architecture (v10.00)                |
+//| Main EA coordinator — "brick" architecture (v14.00)                |
 //| Rules:                                                           |
 //|   - Every behavior is an independent, toggleable brick            |
 //|     (see Inputs.mqh). No more hardcoded Style A/B/C engines.      |
@@ -16,7 +16,7 @@
 //|     never immediately on session start.                            |
 //+------------------------------------------------------------------+
 #property copyright "HedgeGrid EA"
-#property version   "10.00"
+#property version   "14.00"
 #property strict
 
 #include "Inputs.mqh"
@@ -210,6 +210,7 @@ void OnTick()
             ProcessInsideMaintenance(g_state);
             g_state.refillNeeded = false;
            }
+         return;
         }
      }
   
@@ -346,6 +347,16 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
      }
 
    if(dealEntry != DEAL_ENTRY_IN) return; // if just A position opened
+   
+   // ------------------------------------------------------------
+   // REAL-TIME SAFETY BARRIER
+   // ------------------------------------------------------------
+   // If positions are 0 but old ghost orders are still clearing out or
+   // generating late cancellation pulses, BLOCK the normal flow from running!
+   if(CountPositions(g_state.magicNumber) == 0 && CountOrders(g_state.magicNumber) > 0)
+     {
+      return; // Absolute protection cutoff
+     }
 
    // ------------------------------------------------------------
    // NORMAL FLOW — a new position opened.
