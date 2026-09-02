@@ -286,7 +286,6 @@ void DeleteAllOrders(int magicNumber)
    for(int i = 0; i < ArraySize(sequence); i++)
       DeleteOrder(sequence[i]);
 }
-
 //+------------------------------------------------------------------+
 //| Core position close — ticket-based, partial-aware, with retries  |
 //| Source: InternalClose() from CandleMultiOrder Rev 8.6            |

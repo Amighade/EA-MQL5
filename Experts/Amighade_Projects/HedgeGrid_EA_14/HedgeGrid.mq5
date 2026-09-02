@@ -293,18 +293,14 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
                         const MqlTradeRequest     &request,
                         const MqlTradeResult      &result)
 {
-   // Bug fix #3: only DEAL_ADD is relevant
-   if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
+   // FIXED GATEWAY: Pass both deal additions AND order deletions through
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD && 
+      trans.type != TRADE_TRANSACTION_ORDER_DELETE) return;
+      
    if(trans.symbol != _Symbol) return;
 
-   // FIX: Removed the rigid trans.deal_type filter block entirely.
-   // We select the deal ticket directly to let any close/partial close event pass through.
-   if(!HistoryDealSelect(trans.deal)) return;
-   ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
-
    // ------------------------------------------------------------
-   // CLEANUP IN PROGRESS — close one position per confirmation.
-   // Closing always outranks opening: nothing else runs here.
+   // CLEANUP SHIELD BLOCK: Intercepts all confirmations safely
    // ------------------------------------------------------------
    if(g_state.cleanupInProgress)
      {
@@ -318,8 +314,14 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
             g_state.refillNeeded = false;
            }
         }
-      return;
+      return; // Absolute exit door for cleanup thread pulses
      }
+
+   // From this point down, only pure DEAL_ADD events matter for normal flow
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
+
+   if(!HistoryDealSelect(trans.deal)) return;
+   ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
 
    ulong positionTicket = trans.position;
    if(positionTicket == 0) return;

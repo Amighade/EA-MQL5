@@ -75,6 +75,7 @@ void StartCleanupSequence(GridState &state)
 //| Close exactly one position per call, in zigzag profit order.     |
 //| Returns true once the whole cleanup sequence is complete.        |
 //+------------------------------------------------------------------+
+/*
 bool ExecuteNextCloseStep(GridState &state)
 {
    if(!state.cleanupInProgress) return true;
@@ -132,5 +133,81 @@ bool ExecuteNextCloseStep(GridState &state)
      }
    return false;
 }
+*/
+
+bool ExecuteNextCloseStep(GridState &state)
+{
+   if(!state.cleanupInProgress) return true;
+
+   // 1. ALWAYS rescan positions first to catch any mid-cleanup order hits instantly
+   BuildAbsProfitPositionOrder(state.magicNumber, state.closeSequence);
+   
+   // 2. If a position exists (or was filled meanwhile), close it and exit to wait for confirmation
+   if(ArraySize(state.closeSequence) > 0)
+     {
+      if(PositionSelectByTicket(state.closeSequence[0]))
+        {
+         ClosePosition(state.closeSequence[0]);
+         state.cleanupStep++;
+        }
+      return false; // Stay locked behind the cleanup shield
+     }
+
+   // 3. POSITIONS ARE VERIFIED 0: Now handle orders one-by-one using the broker's pulses
+   if(state.cleanupType == CLEANUP_CLOSE_ALL)
+     {
+      ulong  closestTicket = 0;
+      double closestDist   = DBL_MAX;
+      double currentPrice  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      int    remainingOrders = 0;
+
+      // Scan the chart once: count orders and isolate the single closest one
+      for(int i = OrdersTotal() - 1; i >= 0; i--)
+        {
+         ulong ticket = OrderGetTicket(i);
+         if(ticket > 0 && OrderGetInteger(ORDER_MAGIC) == state.magicNumber && OrderGetString(ORDER_SYMBOL) == _Symbol)
+           {
+            remainingOrders++;
+            double dist = MathAbs(OrderGetDouble(ORDER_PRICE_OPEN) - currentPrice);
+            if(dist < closestDist)
+              {
+               closestDist   = dist;
+               closestTicket = ticket;
+              }
+           }
+        }
+
+      // If orders remain, delete ONLY the closest one and wait for the broker's pulse
+      if(remainingOrders > 0)
+        {
+         if(closestTicket > 0) 
+            DeleteOrder(closestTicket); 
+            
+         return false; // Stay locked. cleanupInProgress remains TRUE.
+        }
+        
+      // This section ONLY runs when positions AND orders are confirmed 0 on the server
+      ResetCycle(state);
+      state.gridPlaced = false;
+     }
+   else // CLEANUP_CLOSE_POSITIONS style
+     {
+      state.cycleActive = false;
+      if(InpInsideMaintenanceStyle != MAINTENANCE_NONE)
+        {
+         state.refillNeeded = true;
+         ProcessInsideMaintenance(state);
+         state.refillNeeded = false;
+        }
+     }
+
+   // 4. CLEAN ABSOLUTE UNLOCK
+   state.cleanupInProgress = false;
+   state.cleanupStep       = 0;
+   LogCleanupComplete();
+   return true;
+}
+
+
 
 #endif
