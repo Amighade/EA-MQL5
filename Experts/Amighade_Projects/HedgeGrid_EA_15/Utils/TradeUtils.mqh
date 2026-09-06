@@ -517,4 +517,56 @@ string RetcodeToString(int code)
      }
 }
 
+//+------------------------------------------------------------------+
+//| Universal Smart Advance Order SL Stamper                         |
+//+------------------------------------------------------------------+
+void ApplyEmergencySLToRestingOrders(int magicNumber, ENUM_ORDER_TYPE targetOrderType)
+{
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double minStop = MinStopDistancePrice(_Symbol);
+   
+   // Derive safe baseline distance metrics cleanly using your native formula
+   double slDist = GetFirstLevelSLDistance(0.0, ask - bid, minStop);
+   if(slDist <= 0) return;
+
+   // Stable backward loop scan prevents platform index shifting crashes
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = OrderGetTicket(i);
+      if(!OrderSelect(ticket)) continue;
+      if(OrderGetString(ORDER_SYMBOL) != _Symbol)     continue;
+      if(OrderGetInteger(ORDER_MAGIC) != magicNumber)  continue;
+      if((ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE) != targetOrderType) continue; // Skip the safe opposite side
+
+      double openPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+      double currentSL = OrderGetDouble(ORDER_SL);
+
+      // ADVANCED ABSENCE GATE: Only execute network modifications if the order is completely unprotected
+      if(currentSL == 0.0)
+        {
+         double targetSL = (targetOrderType == ORDER_TYPE_BUY_STOP) ? 
+                           AlignToTick(_Symbol, openPrice - slDist) : 
+                           AlignToTick(_Symbol, openPrice + slDist);
+
+         MqlTradeRequest req = {};
+         MqlTradeResult  res = {};
+         
+         req.action = TRADE_ACTION_MODIFY;
+         req.order  = ticket;
+         req.price  = openPrice;
+         req.sl     = targetSL;
+         req.tp     = OrderGetDouble(ORDER_TP);
+         req.type_time = ORDER_TIME_GTC;
+
+         ResetLastError();
+         if(!OrderSend(req, res))
+           {
+            LogDebug(StringFormat("[SafetyNet] Advance Order SL modification failed for ticket=%I64u err=%d", ticket, GetLastError()));
+           }
+        }
+     }
+}
+
+
 #endif

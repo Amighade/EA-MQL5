@@ -404,6 +404,21 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    ProcessOrderFill(trans.position, g_state);
    ReSnapshotIfArmed(g_state);
 
+   // ============================================================
+   // ADVANCED SAFETY VALVE VALVE
+   // ============================================================
+   // Check if the user enabled the protection (> 0) and we have reached the exact preparation milestone
+   if(InpEmergencySLPassThreshold > 0 && g_state.passCounter == (InpEmergencySLPassThreshold - 1))
+     {
+      // If a SELL position just filled, the upcoming potential Pass 3 threat is a reversal UP into BUY STOPS
+      // If a BUY position just filled, the upcoming potential Pass 3 threat is a reversal DOWN into SELL STOPS
+      ENUM_POSITION_TYPE filledSide = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      ENUM_ORDER_TYPE upcomingThreatSide = (filledSide == POSITION_TYPE_SELL) ? ORDER_TYPE_BUY_STOP : ORDER_TYPE_SELL_STOP;
+
+      // Pre-stamp the upcoming side in advance while the current side is still trading safely
+      ApplyEmergencySLToRestingOrders(g_state.magicNumber, upcomingThreatSide);
+     }
+
    UpdateOppositeGrid(g_state);
    ShiftGrid(g_state);
    ProcessInsideStrategy(g_state);

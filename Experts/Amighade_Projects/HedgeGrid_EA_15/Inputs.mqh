@@ -154,9 +154,10 @@ input ENUM_OUTSIDE_REFILL_STYLE InpOutsideRefillStyle = OUTSIDE_NONE;   // Refil
 //--- BRICK 6: SL (breakeven-lock) ---------------------------------------
 input ENUM_SL_MODE InpSLArmMode   = SL_NONE;      // SL mode used when first arming
 input ENUM_SL_MODE InpSLTrailMode = SL_NONE;      // SL mode used when trailing an already-armed SL
-input int                  InpRunawayN = 2;
-
-input int    InpSLNBack            = 1;        // SL_N_BACK_GRID only: steps back from last hit (1 = last hit's own level)
+input int   InpRunawayN          = 2;
+input int   InpSLNBack           = 1;        // SL_N_BACK_GRID only: steps back from last hit (1 = last hit's own level)
+// The Pass Counter threshold required to stamp hard emergency SL on recovery orders (0 = Disabled)
+input int   InpEmergencySLPassThreshold = 0; 
 
 //--- BRICK 7: Cleanup type after SL hit / safety stop --------------------
 input ENUM_CLEANUP_MODE InpCleanupMode = CLEANUP_CLOSE_ALL; // What "cleanup" means when triggered
