@@ -445,11 +445,8 @@ void BuildGrid(double price, ENUM_LOT_MODE lotMode, GridState &state)
    double sp  = AlignToTick(_Symbol, state.anchorSell - InpGridSpacing * (nextLevel-1));
    double lot = GetLot(nextLevel, lotMode);
 
-   // Configure safety parameters
-   bool isThresholdBreached = (state.passCounter >= 4 || lot >= 0.10);
-
-   double bsl = ((nextLevel == 1 || isThresholdBreached) && slDist > 0) ? AlignToTick(_Symbol, bp - slDist) : 0;
-   double ssl = ((nextLevel == 1 || isThresholdBreached) && slDist > 0) ? AlignToTick(_Symbol, sp + slDist) : 0;
+   double bsl = (nextLevel == 1 && slDist > 0) ? AlignToTick(_Symbol, bp - slDist) : 0;
+   double ssl = (nextLevel == 1 && slDist > 0) ? AlignToTick(_Symbol, sp + slDist) : 0;
 
    // Place exactly one pair safely
    PlaceOrderPair(bp, lot, sp, lot, state.magicNumber, bsl, ssl);

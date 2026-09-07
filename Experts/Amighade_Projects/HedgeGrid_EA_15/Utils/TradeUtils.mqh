@@ -522,12 +522,16 @@ string RetcodeToString(int code)
 //+------------------------------------------------------------------+
 void ApplyEmergencySLToRestingOrders(int magicNumber, ENUM_ORDER_TYPE targetOrderType)
 {
+   if(InpEmergencySLMode == FIRST_SL_NONE) return;
+
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double minStop = MinStopDistancePrice(_Symbol);
+   double range = 0;
    
    // Derive safe baseline distance metrics cleanly using your native formula
-   double slDist = GetFirstLevelSLDistance(0.0, ask - bid, minStop);
+   double slDist = GetEmergencySLDistance(range, ask - bid, minStop);
+
    if(slDist <= 0) return;
 
    // Stable backward loop scan prevents platform index shifting crashes
@@ -568,5 +572,16 @@ void ApplyEmergencySLToRestingOrders(int magicNumber, ENUM_ORDER_TYPE targetOrde
      }
 }
 
+double GetEmergencySLDistance(double range, double spread, double minStop)
+{
+   switch(InpEmergencySLMode)
+     {
+      case FIRST_SL_TIGHT:        return spread + minStop;
+      case FIRST_SL_GRID_SPACING: return InpGridSpacing * InpFirstSLRangeFraction;
+      case FIRST_SL_GAP_FRAC:     return InpInitialGap * InpFirstSLRangeFraction;
+      case FIRST_SL_RANGE_FRAC:   return range * InpFirstSLRangeFraction;
+      default:                    return 0.0;   // FIRST_SL_NONE
+     }
+}
 
 #endif

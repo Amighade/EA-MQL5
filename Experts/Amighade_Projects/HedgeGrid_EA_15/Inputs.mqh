@@ -99,11 +99,11 @@ enum ENUM_GRID_ANCHOR_MODE { ANCHOR_CURRENT_PRICE = 0, ANCHOR_PREV_BAR_RANGE = 1
 
 enum ENUM_FIRST_LEVEL_SL_MODE
 {
-   FIRST_SL_NONE         = 0,   // no SL on the first level pair
+   FIRST_SL_NONE         = 0,
    FIRST_SL_TIGHT        = 1,   // entry ± (spread + minStop) — broker-minimum distance
    FIRST_SL_GRID_SPACING = 2,   // entry ± (InpGridSpacing * InpFirstSLRangeFraction)
    FIRST_SL_GAP_FRAC     = 3,   // entry ± (InpInitialGap * InpFirstSLRangeFraction)
-   FIRST_SL_RANGE_FRAC   = 4    // entry ± (prev-bar range × InpFirstSLRangeFraction)
+   FIRST_SL_RANGE_FRAC   = 4
 };
 
 //double InpCommissionPerLot = 0.0;
@@ -113,8 +113,6 @@ enum ENUM_FIRST_LEVEL_SL_MODE
 
 input ENUM_TIMEFRAMES Timeframe        = (ENUM_TIMEFRAMES)0;
 input ENUM_GRID_ANCHOR_MODE InpGridAnchorMode = ANCHOR_CURRENT_PRICE;
-input ENUM_FIRST_LEVEL_SL_MODE InpFirstLevelSLMode  = FIRST_SL_NONE;
-input double                   InpFirstSLRangeFraction = 0.25;
 
 //--- Grid Settings (core, always active)
 input double InpInitialGap    = 2.00;  // Gap between nearest BUY and SELL ($)
@@ -152,12 +150,18 @@ input double                 InpRevisitLotMax   = 0.20;            // Revisit st
 input ENUM_OUTSIDE_REFILL_STYLE InpOutsideRefillStyle = OUTSIDE_NONE;   // Refill outside levels when count drops below InpMinGridLevels?
 
 //--- BRICK 6: SL (breakeven-lock) ---------------------------------------
-input ENUM_SL_MODE InpSLArmMode   = SL_NONE;      // SL mode used when first arming
-input ENUM_SL_MODE InpSLTrailMode = SL_NONE;      // SL mode used when trailing an already-armed SL
+input ENUM_SL_MODE InpSLArmMode   = SL_NONE;
+input ENUM_SL_MODE InpSLTrailMode = SL_NONE;
 input int   InpRunawayN          = 2;
-input int   InpSLNBack           = 1;        // SL_N_BACK_GRID only: steps back from last hit (1 = last hit's own level)
+input int   InpSLNBack           = 1;        
+// SL_N_BACK_GRID only: steps back from last hit (1 = last hit's own level)
+// The Pass Counter threshold required to stamp hard emergency SL on recovery orders (0 = Disabled)
+input ENUM_FIRST_LEVEL_SL_MODE InpFirstLevelSLMode  = FIRST_SL_NONE;
 // The Pass Counter threshold required to stamp hard emergency SL on recovery orders (0 = Disabled)
 input int   InpEmergencySLPassThreshold = 0; 
+// SEPARATE INDEPENDENT SELECTOR USING THE SAME ENUM
+input ENUM_FIRST_LEVEL_SL_MODE InpEmergencySLMode = FIRST_SL_NONE;
+input double                   InpFirstSLRangeFraction = 1;
 
 //--- BRICK 7: Cleanup type after SL hit / safety stop --------------------
 input ENUM_CLEANUP_MODE InpCleanupMode = CLEANUP_CLOSE_ALL; // What "cleanup" means when triggered
