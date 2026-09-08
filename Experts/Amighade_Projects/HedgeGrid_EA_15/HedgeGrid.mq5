@@ -409,7 +409,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    // ADVANCED SAFETY VALVE VALVE
    // ============================================================
    // Check if the user enabled the protection (> 0) and we have reached the exact preparation milestone
-   if(InpEmergencySLPassThreshold > 0 && g_state.passCounter == (InpEmergencySLPassThreshold - 1))
+   if(InpEmergencySLPassThreshold > 0 && g_state.passCounter >= (InpEmergencySLPassThreshold - 1))
      {
       // If a SELL position just filled, the upcoming potential Pass 3 threat is a reversal UP into BUY STOPS
       // If a BUY position just filled, the upcoming potential Pass 3 threat is a reversal DOWN into SELL STOPS
