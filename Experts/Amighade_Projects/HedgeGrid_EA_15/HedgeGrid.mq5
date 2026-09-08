@@ -59,6 +59,7 @@ GridState g_state;
 //+------------------------------------------------------------------+
 void CheckAndBuildGrid(GridState &state)
 {
+   //if(!IsNewBar(state.lastBarGridCheck)) return;
    if(!state.sessionAllowed)             return;
    if(state.gridPlaced)                  return;
    if(state.cleanupInProgress)           return; 
@@ -412,8 +413,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
      {
       // If a SELL position just filled, the upcoming potential Pass 3 threat is a reversal UP into BUY STOPS
       // If a BUY position just filled, the upcoming potential Pass 3 threat is a reversal DOWN into SELL STOPS
-      ENUM_POSITION_TYPE filledSide = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-      ENUM_ORDER_TYPE upcomingThreatSide = (filledSide == POSITION_TYPE_SELL) ? ORDER_TYPE_BUY_STOP : ORDER_TYPE_SELL_STOP;
+      //ENUM_POSITION_TYPE filledSide = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      ENUM_ORDER_TYPE upcomingThreatSide = (g_state.lastHitDirection == ORDER_TYPE_SELL) ? ORDER_TYPE_BUY_STOP : ORDER_TYPE_SELL_STOP;
 
       // Pre-stamp the upcoming side in advance while the current side is still trading safely
       ApplyEmergencySLToRestingOrders(g_state.magicNumber, upcomingThreatSide);

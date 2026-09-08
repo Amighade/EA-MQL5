@@ -520,9 +520,85 @@ string RetcodeToString(int code)
 //+------------------------------------------------------------------+
 //| Universal Smart Advance Order SL Stamper                         |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| Universal Smart Advance Order SL Stamper                         |
+//| FIXED: Safe index scanning protects against real-time pool shifts|
+//+------------------------------------------------------------------+
 void ApplyEmergencySLToRestingOrders(int magicNumber, ENUM_ORDER_TYPE targetOrderType)
 {
    if(InpEmergencySLMode == FIRST_SL_NONE) return;
+   if(InpEmergencySLPassThreshold <= 0) return;
+
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double minStop = MinStopDistancePrice(_Symbol);
+   double range = 0;
+   
+   double slDist = GetEmergencySLDistance(range, ask - bid, minStop);
+   if(slDist <= 0) return;
+   if(slDist < minStop) slDist = minStop;
+
+   // 1. SAFE POOL SNAPSHOT: Extract tickets into a flat array first 
+   // This completely prevents index-shifting omissions when orders change state
+   ulong  tickets[];
+   int    totalOrders = OrdersTotal();
+   ArrayResize(tickets, totalOrders);
+   int targetCount = 0;
+
+   for(int i = 0; i < totalOrders; i++)
+     {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket > 0 && OrderSelect(ticket))
+        {
+         if(OrderGetString(ORDER_SYMBOL) == _Symbol && 
+            OrderGetInteger(ORDER_MAGIC) == magicNumber && 
+            (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE) == targetOrderType)
+           {
+            tickets[targetCount] = ticket;
+            targetCount++;
+           }
+        }
+     }
+
+   // 2. DISPATCH MODIFICATIONS VIA STABLE CACHED TICKETS
+   for(int i = 0; i < targetCount; i++)
+     {
+      ulong ticket = tickets[i];
+      if(!OrderSelect(ticket)) continue; // Double check in case filled mid-loop
+
+      double openPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+      double currentSL = OrderGetDouble(ORDER_SL);
+
+      if(currentSL == 0.0)
+        {
+         double targetSL = (targetOrderType == ORDER_TYPE_BUY_STOP) ? 
+                           AlignToTick(_Symbol, openPrice - slDist) : 
+                           AlignToTick(_Symbol, openPrice + slDist);
+
+         MqlTradeRequest req = {};
+         MqlTradeResult  res = {};
+         
+         req.action    = TRADE_ACTION_MODIFY;
+         req.order     = ticket;
+         req.price     = openPrice;
+         req.sl        = targetSL;
+         req.tp        = OrderGetDouble(ORDER_TP);
+         req.type_time = ORDER_TIME_GTC;
+
+         ResetLastError();
+         if(!OrderSend(req, res))
+           {
+            LogDebug(StringFormat("[SafetyNet] Advance SL failed for ticket=%I64u err=%d", ticket, GetLastError()));
+           }
+        }
+     }
+}
+
+
+void ApplyEmergencySLToRestingOrders_old(int magicNumber, ENUM_ORDER_TYPE targetOrderType)
+{
+   if(InpEmergencySLMode == FIRST_SL_NONE) return;
+   if(InpEmergencySLPassThreshold <= 0) return;
 
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
@@ -533,6 +609,7 @@ void ApplyEmergencySLToRestingOrders(int magicNumber, ENUM_ORDER_TYPE targetOrde
    double slDist = GetEmergencySLDistance(range, ask - bid, minStop);
 
    if(slDist <= 0) return;
+   if(slDist < minStop) slDist = minStop;
 
    // Stable backward loop scan prevents platform index shifting crashes
    for(int i = OrdersTotal() - 1; i >= 0; i--)
