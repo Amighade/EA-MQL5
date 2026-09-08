@@ -405,7 +405,17 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    ProcessOrderFill(trans.position, g_state);
    ReSnapshotIfArmed(g_state);
 
-   // ============================================================
+   UpdateOppositeGrid(g_state);
+   ShiftGrid(g_state);
+   ProcessInsideStrategy(g_state);
+      
+   // Execute loopless outside refills step-by-step
+   RefillOutside(g_state);
+   g_state.outsideRefillPending = false;
+
+   ProcessSLManager(g_state);
+   
+      // ============================================================
    // ADVANCED SAFETY VALVE VALVE
    // ============================================================
    // Check if the user enabled the protection (> 0) and we have reached the exact preparation milestone
@@ -419,16 +429,6 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       // Pre-stamp the upcoming side in advance while the current side is still trading safely
       ApplyEmergencySLToRestingOrders(g_state.magicNumber, upcomingThreatSide);
      }
-
-   UpdateOppositeGrid(g_state);
-   ShiftGrid(g_state);
-   ProcessInsideStrategy(g_state);
-      
-   // Execute loopless outside refills step-by-step
-   RefillOutside(g_state);
-   g_state.outsideRefillPending = false;
-
-   ProcessSLManager(g_state);
 
    LogHistory("ORDER_FILL",
               g_state.lastHitPrice,
