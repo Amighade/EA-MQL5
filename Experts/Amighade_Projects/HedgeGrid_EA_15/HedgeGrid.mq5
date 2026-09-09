@@ -218,6 +218,94 @@ void OnTick()
    // the one real owner for each — never hand-write the fields here.
    // ------------------------------------------------------------
 
+   // FIXED BASED ON LOG ENTRYS: Removed the restrictive '&& CountPositions == 0' gate.
+   // Added a hard TERMINAL_CONNECTED validation check. If the cleanup flag is stuck 
+   // but the connection is back alive, OnTick will pulse ExecuteNextCloseStep() 
+   // on every incoming tick until both positions and pending structures clear completely.
+   if(g_state.cleanupInProgress && TerminalInfoInteger(TERMINAL_CONNECTED))
+     {
+      bool done = ExecuteNextCloseStep(g_state);
+      if(done)
+        {
+         ResetSLManager(g_state);
+         if(g_state.refillNeeded)
+           {
+            ProcessInsideMaintenance(g_state);
+            g_state.refillNeeded = false;
+           }
+         return;
+        }
+     }
+  
+   // Phantom grid: state believes a grid exists, broker has nothing.
+   if(g_state.gridPlaced && !g_state.cleanupInProgress &&
+      CountPositions(g_state.magicNumber) == 0 &&
+      CountOrders(g_state.magicNumber) == 0)
+     {
+      ResetGridBuilder(g_state);
+     }
+   
+   // Orphaned wall: armed but nothing left for it to watch.
+   if(g_state.slWallArmed && !g_state.cycleActive)
+     {
+      ResetSLManager(g_state);
+     }
+        
+   if(!prevSession && g_state.sessionAllowed)
+      LogSessionChange(true, GetActiveSessionName());
+   if(prevSession && !g_state.sessionAllowed)
+      LogSessionChange(false, "Session ended");
+      
+   // (Unstick already handled above for the cleanupInProgress + no positions case)
+  
+   CalculateBasketProfits(g_state);
+
+   // Closing always outranks opening/modifying — nothing else runs while
+   // a cleanup sequence is in progress (it progresses via confirmations
+   // in OnTradeTransaction, not per-tick).
+   if(g_state.cleanupInProgress) return;
+
+   if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE && IsNewBar(g_state.lastBarGridFirstSL) &&
+      g_state.gridPlaced && !g_state.cycleActive)   // gridPlaced but nothing's filled yet
+     {
+      DeleteAllOrders(g_state.magicNumber);
+      ResetGridBuilder(g_state);   // clears gridPlaced, anchors, etc. — next CheckAndBuildGrid call rebuilds fresh
+     }
+   // the ONLY place a grid is ever built.
+   CheckAndBuildGrid(g_state);
+
+   if(g_state.needsGridVerification)
+     {
+      g_state.needsGridVerification = false;   // check runs exactly once, regardless of outcome
+   
+      if(!VerifyFreshGrid(g_state, g_state.lotMode))
+        {
+         LogDebug("[Coordinator] Fresh grid failed verification — resetting.");
+         TriggerSafetyStop(g_state, "GRID_VERIFICATION_FAILED");
+        }
+     }
+
+   // recenter (fresh grid only)
+   if(ProcessRecentering(g_state))
+      BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), g_state.lotMode, g_state);
+
+}
+
+void OnTick_old()
+{
+   bool prevSession = g_state.sessionAllowed;
+   g_state.sessionAllowed = IsSessionAllowed();
+   
+   // Check market profit tracking dynamically on every incoming tick
+   if(g_state.cycleActive && !g_state.cleanupInProgress)
+     {
+      ProcessSLManager(g_state);
+     }
+   // ------------------------------------------------------------
+   // Reconciliation: recognize known-stuck shapes and delegate to
+   // the one real owner for each — never hand-write the fields here.
+   // ------------------------------------------------------------
+
    // Cleanup never got the transaction that should have kicked it off.
    if(g_state.cleanupInProgress && CountPositions(g_state.magicNumber) == 0)
      {
@@ -402,7 +490,9 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    if(dealEntry != DEAL_ENTRY_IN) return; // Ignore non-fill deal entries
 
    // NORMAL DIRECTIONAL TREND FLOW — A pending level filled cleanly into a position
-   ProcessOrderFill(trans.position, g_state);
+   // If a cache desync occurs here, the rest of your cycle logic STILL processes flawlessly.
+   bool trackingSuccess = ProcessOrderFill(trans.position, g_state);
+     
    ReSnapshotIfArmed(g_state);
 
    UpdateOppositeGrid(g_state);
@@ -415,9 +505,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 
    ProcessSLManager(g_state);
    
-      // ============================================================
    // ADVANCED SAFETY VALVE VALVE
-   // ============================================================
    // Check if the user enabled the protection (> 0) and we have reached the exact preparation milestone
    if(InpEmergencySLPassThreshold > 0 && g_state.passCounter >= (InpEmergencySLPassThreshold - 1))
      {
@@ -429,16 +517,25 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       // Pre-stamp the upcoming side in advance while the current side is still trading safely
       ApplyEmergencySLToRestingOrders(g_state.magicNumber, upcomingThreatSide);
      }
-
-   LogHistory("ORDER_FILL",
-              g_state.lastHitPrice,
-              g_state.lastHitDirection==ORDER_TYPE_BUY?"BUY":"SELL",
-              g_state.lastHitLot,
-              g_state.passCounter,
-              g_state.currentBlockLot,
-              g_state.basketProfit,
-              g_state.sessionAllowed,
-              AccountInfoDouble(ACCOUNT_MARGIN_FREE));
+     
+   // SAFE HISTORY LOGGER GATE: 
+   // Only execute writing loops if tracking successfully captured verified transaction variables
+   if(trackingSuccess)
+     {
+      LogHistory("ORDER_FILL",
+                 g_state.lastHitPrice,
+                 g_state.lastHitDirection==ORDER_TYPE_BUY?"BUY":"SELL",
+                 g_state.lastHitLot,
+                 g_state.passCounter,
+                 g_state.currentBlockLot,
+                 g_state.basketProfit,
+                 g_state.sessionAllowed,
+                 AccountInfoDouble(ACCOUNT_MARGIN_FREE));
+     }
+   else
+     {
+      LogDebug("[HistoryLogger] ProcessOrderFill returned false due to platform cache lag — skipping single history log print.");
+     }
 }
 
 

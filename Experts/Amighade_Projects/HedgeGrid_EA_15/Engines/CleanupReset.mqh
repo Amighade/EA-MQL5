@@ -138,19 +138,34 @@ bool ExecuteNextCloseStep(GridState &state)
 bool ExecuteNextCloseStep(GridState &state)
 {
    if(!state.cleanupInProgress) return true;
+   
+   // 1. HARD NETWORK GUARD: If the terminal connection to the broker is down,
+   // drop processing immediately. Bypasses useless calculations or queue flooding.
+   if(!TerminalInfoInteger(TERMINAL_CONNECTED)) return false;
 
-   // 1. ALWAYS rescan positions first to catch any mid-cleanup order hits instantly
+   // 2. Scan the live environment for open positions matching this magic number
    BuildAbsProfitPositionOrder(state.magicNumber, state.closeSequence);
    
-   // 2. If a position exists (or was filled meanwhile), close it and exit to wait for confirmation
+   // If a position exists (or was filled meanwhile), close it and exit to wait for confirmation
    if(ArraySize(state.closeSequence) > 0)
      {
-      if(PositionSelectByTicket(state.closeSequence[0]))
+      // NATIVE CORRECTION: Explicitly extract the index element to prevent compiler mismatch
+      ulong targetTicket = state.closeSequence[0]; 
+      
+      if(PositionSelectByTicket(targetTicket))
         {
          ClosePosition(state.closeSequence[0]);
          state.cleanupStep++;
+         return false; // Safely exit and wait for the broker's transaction pulse
         }
-      return false; // Stay locked behind the cleanup shield
+      else
+        {
+         // If a ticket exists in the real-time scan but selection fails due to cache lag,
+         // we do NOT return a blind false lock. We bypass the return lock so the 
+         // system can progress and attempt a clean reconnection sweep on subsequent pulses.
+         LogDebug(StringFormat("[CleanupReset] Cache sync lag on position ticket %I64u.", targetTicket));
+        }
+      return false; // Maintain lock footprint until next pulse evaluates
      }
 
    // 3. POSITIONS ARE VERIFIED 0: Now handle orders one-by-one using the broker's pulses

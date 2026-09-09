@@ -44,7 +44,7 @@ bool InitHistoryLogger()
 
    // Open file in common folder, append mode
    g_historyFileHandle = FileOpen(fname,
-                                  FILE_WRITE | FILE_READ | FILE_CSV | FILE_COMMON | FILE_ANSI,
+                                  FILE_WRITE | FILE_READ | FILE_CSV | FILE_ANSI,
                                   ',');
 
    if(g_historyFileHandle == INVALID_HANDLE)
@@ -106,7 +106,7 @@ void LogHistory(string eventType,
       string fname = GetHistoryLogFileName();
 
       g_historyFileHandle = FileOpen(fname,
-                                     FILE_WRITE | FILE_READ | FILE_CSV | FILE_COMMON | FILE_ANSI,
+                                     FILE_WRITE | FILE_READ | FILE_CSV | FILE_ANSI,
                                      ',');
 
       if(g_historyFileHandle == INVALID_HANDLE)
