@@ -16,7 +16,7 @@
 //|     never immediately on session start.                            |
 //+------------------------------------------------------------------+
 #property copyright "HedgeGrid EA"
-#property version   "10.00"
+#property version   "14.00"
 #property strict
 
 #include "Inputs.mqh"
@@ -187,7 +187,12 @@ void OnTick()
 {
    bool prevSession = g_state.sessionAllowed;
    g_state.sessionAllowed = IsSessionAllowed();
-
+   
+   // Check market profit tracking dynamically on every incoming tick
+   if(g_state.cycleActive && !g_state.cleanupInProgress)
+     {
+      ProcessSLManager(g_state);
+     }
    // ------------------------------------------------------------
    // Reconciliation: recognize known-stuck shapes and delegate to
    // the one real owner for each — never hand-write the fields here.
@@ -205,6 +210,7 @@ void OnTick()
             ProcessInsideMaintenance(g_state);
             g_state.refillNeeded = false;
            }
+         return;
         }
      }
   
@@ -261,14 +267,16 @@ void OnTick()
       BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), g_state.lotMode, g_state);
 
    // continuous SL arm/trail check
-   if(g_state.cycleActive)
-      ProcessSLManager(g_state);
+   //if(g_state.cycleActive)
+   //   ProcessSLManager(g_state);
    
+   /*
    if(g_state.outsideRefillPending)
      {
       RefillOutside(g_state);
       g_state.outsideRefillPending = false;
      }
+   */
 }
 
 //+------------------------------------------------------------------+
@@ -283,6 +291,128 @@ void OnTick()
 //|     combo, is treated as a signal to start cleanup (unless an     |
 //|     armed SL wall is still mid-sequence, expecting more closes).  |
 //+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest     &request,
+                        const MqlTradeResult      &result)
+{
+   // FIXED GATEWAY: Pass both deal additions AND order deletions through
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD && 
+      trans.type != TRADE_TRANSACTION_ORDER_DELETE &&
+      trans.type != TRADE_TRANSACTION_ORDER_ADD) return;
+      
+   if(trans.symbol != _Symbol) return;
+
+   // ------------------------------------------------------------
+   // CLEANUP SHIELD BLOCK: Intercepts all confirmations safely
+   // ------------------------------------------------------------
+   if(g_state.cleanupInProgress)
+     {
+      bool done = ExecuteNextCloseStep(g_state);
+      if(done)
+        {
+         ResetSLManager(g_state); 
+         if(g_state.refillNeeded)
+           {
+            ProcessInsideMaintenance(g_state);
+            g_state.refillNeeded = false;
+           }
+        }
+      return; // Absolute exit door for cleanup thread pulses
+     }
+
+   // ------------------------------------------------------------
+   // ONE-BY-ONE PULSE LOOP INTERCEPTION PASS
+   // ------------------------------------------------------------
+   // Handle order deletions immediately when idle to process step refills
+   if(trans.type == TRADE_TRANSACTION_ORDER_DELETE)
+     {
+      RefillOutside(g_state);
+      g_state.outsideRefillPending = false;
+      return;
+     }
+   // Handle order additions ONLY if a trade cycle is active.
+   // This completely prevents fresh grid setups from misfiring during build pulses!
+   if(trans.type == TRADE_TRANSACTION_ORDER_ADD)
+     {
+      if(g_state.cycleActive)
+        {
+         RefillOutside(g_state);
+         g_state.outsideRefillPending = false;
+        }
+      return; // Terminate this pulse thread safely
+     }
+
+   // From this point down, ignore pending order signals and filter strictly for normal position flow
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
+
+   if(!HistoryDealSelect(trans.deal)) return;
+   ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
+
+   ulong positionTicket = trans.position;
+   if(positionTicket == 0) return;
+
+   // ------------------------------------------------------------
+   // A position CLOSED (deal entry OUT / INOUT / OUT_BY).
+   // Fixed: Partial closes and close-by transactions route correctly here now.
+   // ------------------------------------------------------------
+   if(dealEntry == DEAL_ENTRY_OUT ||
+      dealEntry == DEAL_ENTRY_INOUT ||
+      dealEntry == DEAL_ENTRY_OUT_BY)
+     {
+      StartCleanupSequence(g_state);
+      bool done = ExecuteNextCloseStep(g_state);
+      if(done)
+        {
+         ResetSLManager(g_state); 
+         if(g_state.refillNeeded)
+           {
+            ProcessInsideMaintenance(g_state);
+            g_state.refillNeeded = false;
+           }
+        }
+      return;
+     }
+
+   if(dealEntry != DEAL_ENTRY_IN) return; // if just A position opened
+   
+   // ------------------------------------------------------------
+   // REAL-TIME SAFETY BARRIER
+   // ------------------------------------------------------------
+   // If positions are 0 but old ghost orders are still clearing out or
+   // generating late cancellation pulses, BLOCK the normal flow from running!
+   if(CountPositions(g_state.magicNumber) == 0 && CountOrders(g_state.magicNumber) > 0)
+     {
+      return; // Absolute protection cutoff
+     }
+
+   // ------------------------------------------------------------
+   // NORMAL FLOW — a new position opened.
+   // ------------------------------------------------------------
+   ProcessOrderFill(positionTicket, g_state);
+   ReSnapshotIfArmed(g_state);
+
+   UpdateOppositeGrid(g_state);
+   ShiftGrid(g_state);
+
+   ProcessInsideStrategy(g_state);
+      
+   g_state.outsideRefillPending = true;
+   ProcessSLManager(g_state);
+
+   LogHistory("ORDER_FILL",
+              g_state.lastHitPrice,
+              g_state.lastHitDirection==ORDER_TYPE_BUY?"BUY":"SELL",
+              g_state.lastHitLot,
+              g_state.passCounter,
+              g_state.currentBlockLot,
+              g_state.basketProfit,
+              g_state.sessionAllowed,
+              AccountInfoDouble(ACCOUNT_MARGIN_FREE));
+}
+
+
+
+/*
 void OnTradeTransaction(const MqlTradeTransaction &trans,
                         const MqlTradeRequest     &request,
                         const MqlTradeResult      &result)
@@ -356,14 +486,6 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    // not re-read from a possibly-gone order after the fact).
    double currentPrice  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double expectedPrice = 0.0;
-   /*ulong  faultTicket    = CheckGapFault(currentPrice, g_state.magicNumber, expectedPrice);
-   if(faultTicket != 0)
-     {
-      g_state.gapFaultDetected = true;
-      LogGapFault(expectedPrice, currentPrice, faultTicket);
-      TriggerSafetyStop(g_state, StringFormat("GAP_FAULT ticket=%I64u expected=%.5f", faultTicket, expectedPrice));
-      return;
-     }*/
 
    ProcessOrderFill(positionTicket, g_state);
 
@@ -393,7 +515,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
               g_state.basketProfit,
               g_state.sessionAllowed,
               AccountInfoDouble(ACCOUNT_MARGIN_FREE));
-}
+}*/
 
 //+------------------------------------------------------------------+
 //| OnTimer                                                           |

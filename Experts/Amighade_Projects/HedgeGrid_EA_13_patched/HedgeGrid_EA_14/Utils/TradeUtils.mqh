@@ -398,8 +398,13 @@ bool ModifyPositionSL(ulong ticket, double newSL)
    double curTP  = PositionGetDouble(POSITION_TP);
    int    digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
 
-   // Retry per InpSafetyRetryAttempts / InpSafetyRetryDelayMs (Bug 4/6 safety-net policy)
-   for(int attempt = 1; attempt <= InpSafetyRetryAttempts; attempt++)
+   // Perf/design change: this used to retry up to InpSafetyRetryAttempts times
+   // with a blocking Sleep(InpSafetyRetryDelayMs) between attempts. That's the
+   // call that was freezing the EA thread during SL trailing (called every
+   // tick while armed) whenever the broker rejected a modify. Now: at most
+   // one immediate retry, no Sleep. If it still fails, the caller
+   // (ApplySLToWinners) closes the position instead of us blocking here.
+   for(int attempt = 1; attempt <= 2; attempt++)
      {
       MqlTradeRequest req = {};
       MqlTradeResult  res = {};
@@ -416,7 +421,7 @@ bool ModifyPositionSL(ulong ticket, double newSL)
          return true;
 
       SendFailAction action = ClassifySendFailure(sent, res, GetLastError());
-      if(action == RETRY_SAME && attempt < InpSafetyRetryAttempts) { Sleep(InpSafetyRetryDelayMs); continue; }
+      if(action == RETRY_SAME && attempt < 2) continue; // one immediate retry, no Sleep
       break;
      }
 

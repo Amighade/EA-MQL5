@@ -293,7 +293,13 @@ void DeleteAllOrders(int magicNumber)
 //+------------------------------------------------------------------+
 bool ClosePosition(ulong ticket)
 {
-   for(int attempt = 0; attempt < InpSafetyRetryAttempts; attempt++)
+   // Perf/design change: replaced the Sleep(20/60/80/120)-based retry/
+   // verify loop (up to InpSafetyRetryAttempts iterations) with a single
+   // immediate retry, no blocking -- same pattern as ModifyPositionSL.
+   // This is now the fallback ApplySLToWinners calls whenever an SL
+   // modify fails, so it runs more often than before and can't afford
+   // to block the thread for hundreds of ms per call.
+   for(int attempt = 0; attempt < 2; attempt++)
      {
       if(!PositionSelectByTicket(ticket))
          return true; // already closed
@@ -321,16 +327,14 @@ bool ClosePosition(ulong ticket)
         {
          if(res.retcode == TRADE_RETCODE_DONE || res.retcode == TRADE_RETCODE_DONE_PARTIAL)
            {
-            Sleep(20);
             if(!PositionSelectByTicket(ticket)) return true;
             if(PositionGetDouble(POSITION_VOLUME) <= 0.0) return true;
-            if(res.retcode == TRADE_RETCODE_DONE_PARTIAL) { Sleep(60); continue; }
-            Sleep(80); continue;
+            continue; // remaining volume from a partial fill -> one more immediate attempt
            }
-         else if(res.retcode == TRADE_RETCODE_REQUOTE ||
+         else if((res.retcode == TRADE_RETCODE_REQUOTE ||
                  res.retcode == TRADE_RETCODE_PRICE_CHANGED ||
-                 res.retcode == TRADE_RETCODE_TOO_MANY_REQUESTS)
-           { Sleep(60); continue; }
+                 res.retcode == TRADE_RETCODE_TOO_MANY_REQUESTS) && attempt < 1)
+            continue; // one immediate retry, no Sleep
          else
            {
             LogDebug(StringFormat("ClosePosition FAILED: ticket=%I64u rc=%d", ticket, res.retcode));
@@ -342,7 +346,6 @@ bool ClosePosition(ulong ticket)
          LogDebug(StringFormat("ClosePosition OrderSend FAILED: ticket=%I64u err=%d attempt=%d",
                                ticket, GetLastError(), attempt+1));
          ResetLastError();
-         Sleep(120);
         }
      }
 
@@ -398,8 +401,13 @@ bool ModifyPositionSL(ulong ticket, double newSL)
    double curTP  = PositionGetDouble(POSITION_TP);
    int    digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
 
-   // Retry per InpSafetyRetryAttempts / InpSafetyRetryDelayMs (Bug 4/6 safety-net policy)
-   for(int attempt = 1; attempt <= InpSafetyRetryAttempts; attempt++)
+   // Perf/design change: this used to retry up to InpSafetyRetryAttempts times
+   // with a blocking Sleep(InpSafetyRetryDelayMs) between attempts. That's the
+   // call that was freezing the EA thread during SL trailing (called every
+   // tick while armed) whenever the broker rejected a modify. Now: at most
+   // one immediate retry, no Sleep. If it still fails, the caller
+   // (ApplySLToWinners) closes the position instead of us blocking here.
+   for(int attempt = 1; attempt <= 2; attempt++)
      {
       MqlTradeRequest req = {};
       MqlTradeResult  res = {};
@@ -416,7 +424,7 @@ bool ModifyPositionSL(ulong ticket, double newSL)
          return true;
 
       SendFailAction action = ClassifySendFailure(sent, res, GetLastError());
-      if(action == RETRY_SAME && attempt < InpSafetyRetryAttempts) { Sleep(InpSafetyRetryDelayMs); continue; }
+      if(action == RETRY_SAME && attempt < 2) continue; // one immediate retry, no Sleep
       break;
      }
 

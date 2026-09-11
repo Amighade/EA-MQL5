@@ -38,10 +38,11 @@
 //|   once at arm time — closes the "new fill mid-epoch falls through |
 //|   the cracks" gap.                                                |
 //|                                                                    |
-//| BROKER FAULT (Bug 1.a): if ModifyPositionSL fails after its       |
-//|   internal retries, this immediately calls TriggerSafetyStop —   |
-//|   the same nuclear response as any other exhausted trade-call     |
-//|   failure, not a lighter cleanup.                                 |
+//| BROKER FAULT (updated): if ModifyPositionSL fails after its one   |
+//|   immediate retry (no Sleep), that ticket is closed instead of    |
+//|   nuking the whole basket. TriggerSafetyStop only fires if the    |
+//|   close itself also fails (unprotectable AND unclosable).         |
+//|   See ApplySLToWinners for the full reasoning.                    |
 //+------------------------------------------------------------------+
 #ifndef SL_MANAGER_MQH
 #define SL_MANAGER_MQH
@@ -122,20 +123,60 @@ double NetPnLAtCandidate(double candidateSL, ENUM_POSITION_TYPE winnerSide,
 }
 
 //+------------------------------------------------------------------+
+//| Cheap existence/count check for CalculateSLCandidate's guard.     |
+//| None of the live ENUM_SL_MODE branches in SL_FindCandidate read   |
+//| the position list itself (only the two commented-out legacy       |
+//| modes did, and those enum values no longer even exist in          |
+//| Inputs.mqh) — so building/copying the full array via               |
+//| CollectAllPositions on every call was pure overhead. This counts   |
+//| the same filtered set (symbol + magic) with no ArrayResize and no  |
+//| per-field reads.                                                   |
+//+------------------------------------------------------------------+
+int CountMatchingPositions(int magicNumber)
+{
+   int count = 0;
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      ulong t = PositionGetTicket(i);
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)     continue;
+      if(PositionGetInteger(POSITION_MAGIC) != magicNumber) continue;
+      count++;
+     }
+   return count;
+}
+
+//+------------------------------------------------------------------+
 //| Grid-line SL candidate search (Brick 6 core algorithm)            |
 //+------------------------------------------------------------------+
 double CalculateSLCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide, int magicNumber,
                             ENUM_SL_MODE mode)
 {
-   SLPos list[];
-   int count = CollectAllPositions(magicNumber, list);
+   int count = CountMatchingPositions(magicNumber);
    if(count <= 0) return 0;
+   SLPos list[]; // intentionally left empty — no live SL mode reads it, see note above
    return SL_FindCandidate(state, list, count, winnerSide, magicNumber, mode);
 }
 //+------------------------------------------------------------------+
 //| Apply SL to every ticket in the armed-winner snapshot.            |
-//| Returns applied count, or -1 if a modify failed and a safety      |
-//| stop was triggered (caller must abort further processing).        |
+//| Returns applied count (0..N). A ticket that can't be protected is |
+//| closed instead (see below) — it no longer aborts the whole batch, |
+//| so this never returns -1 anymore. The -1 checks in ArmSL/TrailWall|
+//| are kept as harmless dead guards rather than ripped out.          |
+//|                                                                    |
+//| Design change (agreed): a modify failure used to be treated as a  |
+//| basket-wide emergency (TriggerSafetyStop closes/deletes           |
+//| everything). That's a wildly disproportionate response to one     |
+//| ticket getting rejected. New behavior:                            |
+//|   1. ModifyPositionSL already pre-validates via ValidateStopPrice |
+//|      and now does at most one immediate retry, no Sleep.          |
+//|   2. If it still fails, close JUST that ticket instead of the     |
+//|      whole basket. A ticket closed this way looks identical to    |
+//|      one closed by a real SL hit to AllWinnersClosed() / the rest |
+//|      of this file — no special-casing needed elsewhere.           |
+//|   3. Only if the close ALSO fails (now genuinely unprotectable    |
+//|      AND unclosable) do we escalate to TriggerSafetyStop — that   |
+//|      case still deserves the nuclear response.                    |
 //+------------------------------------------------------------------+
 int ApplySLToWinners(double slLevel, GridState &state)
 {
@@ -151,11 +192,19 @@ int ApplySLToWinners(double slLevel, GridState &state)
       if(oldNorm == slNorm && slNorm > 0.0) { count++; continue; }
 
       if(ModifyPositionSL(t, slLevel))
-         count++;
-      else
         {
-         // Bug 1.a: SL modification failure -> immediate safety stop
-         TriggerSafetyStop(state, StringFormat("SL_MODIFY_FAILED ticket=%I64u", t));
+         count++;
+         continue;
+        }
+
+      // Modify failed even after ModifyPositionSL's own one retry.
+      // Can't protect it -> close it, rather than nuke the whole basket.
+      LogDebug(StringFormat("SL_MODIFY_FAILED ticket=%I64u -> closing position instead", t));
+      if(!ClosePosition(t))
+        {
+         // Genuinely unprotectable AND unclosable — this is the case
+         // that still warrants the emergency stop.
+         TriggerSafetyStop(state, StringFormat("SL_MODIFY_AND_CLOSE_FAILED ticket=%I64u", t));
          return -1;
         }
      }
@@ -225,8 +274,7 @@ void ArmSL(GridState &state)
 {
    ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
    double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLArmMode);
-   Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel, " basketNetProfit: ", state.basketNetProfit);//AGH
-   
+
    if(slLevel <= 0) return; // not safe yet, try again next tick
 
    SnapshotWinners(state.magicNumber, winnerSide);
@@ -294,12 +342,16 @@ void TrailWall(GridState &state)
    //ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
    ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
    double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLTrailMode);
-   
-   Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel, " basketNetProfit: ", state.basketNetProfit);//AGH
-   
+
    if(slLevel <= 0) return; // not safe yet, try again next tick
 
-   SnapshotWinners(state.magicNumber, winnerSide);
+   // Perf: removed the unconditional SnapshotWinners() call that used to
+   // sit here -- it re-scanned every open position every tick, but the
+   // armed-winner set only ever changes on a new fill, which is already
+   // captured correctly and exclusively via ReSnapshotIfArmed (called
+   // from the coordinator on every fill while armed) and the initial
+   // snapshot in ArmSL. Re-running it here every tick just rebuilt the
+   // same array over and over for no reason.
    if(ArraySize(g_ArmedWinnerTickets) == 0) return;
 
    int applied = ApplySLToWinners(slLevel, state);

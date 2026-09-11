@@ -80,14 +80,16 @@ void BuildProximityOrderOrder(int magicNumber, ulong &orderedTickets[])
    double dist[];
    int    n = 0;
    double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   
    int    total = OrdersTotal();      // captured ONCE
-
    ArrayResize(tickets, total);
    ArrayResize(dist,    total);
 
-   for(int i = 0; i < total; i++)     // loop bound is the SAME captured value
+   for(int i = total - 1; i >= 0; i--) 
      {
+      // Safely fetch ticket by index from the end of the pool moving inward
       ulong t = OrderGetTicket(i);
+      if(t == 0) continue;
       if(!OrderSelect(t)) continue;
       if(OrderGetString(ORDER_SYMBOL) != _Symbol)     continue;
       if(OrderGetInteger(ORDER_MAGIC) != magicNumber) continue;
