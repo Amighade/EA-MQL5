@@ -56,6 +56,27 @@ struct GridState
    double         basketBuyProfit;
    double         basketSellProfit;
 
+   // [REV-2026-09-12-BACKBONE] why: O(1) per-side profit tracking to
+   // replace the full-position-loop CalculateBasketProfits() for the
+   // pre-arm decision. Maintained incrementally by
+   // OrderMonitor::UpdateSideVolumeAggregate on every fill/close.
+   // Frozen (no longer updated) for the winner side once armed --
+   // trailing doesn't need live profit (confirmed). Loser side keeps
+   // updating post-arm ONLY if InpCloseLosersAtArm is false (losers
+   // deliberately left open), so the candidate-net-check in
+   // SL_FindCandidate still sees real numbers in that mode. Reset to 0
+   // at BuildGrid (fresh grid) and at successful arm (see ArmSL).
+   double         buyVolume;
+   double         buyAvgEntry;
+   double         sellVolume;
+   double         sellAvgEntry;
+
+   // [REV-2026-09-12-BACKBONE] why: OnTradeTransaction only records this
+   // fact (a winner-side SL/SO hit) -- OnTick is the only place that
+   // acts on it (starts cleanup), per the "transactions record, ticks
+   // decide" rule agreed this session.
+   bool           winnerStoppedOut;
+
    //--- SL state (Brick 6)
    bool           slApplied;
    double         slLevel;
@@ -70,6 +91,30 @@ struct GridState
    ENUM_CLEANUP_MODE cleanupType;
    bool           cleanupInProgress;
    int            cleanupStep;
+   // [REV-2026-09-11-CPU-FIX] why: added to let OnTick's cleanup-reconciliation
+   // scan (a full CountPositions() loop) run every ~2s instead of every tick.
+   datetime       lastCleanupUnstickCheck;   // throttles the OnTick reconciliation scan below
+
+   // [REV-2026-09-13-CLOSE-SAFETY] why: distinguishes "still progressing
+   // normally via real confirmations" from "genuinely stuck, nothing has
+   // changed since the last check" -- only the latter should trigger a
+   // retry + eventually an alarm. Reset to 0 the moment progress resumes.
+   int            lastCleanupRemainingCount;
+   int            cleanupStuckCount;
+
+   // [REV-2026-09-13-CLOSE-SAFETY] why: the loser-purge-at-arm sequence,
+   // structurally the same paced-close pattern ExecuteNextCloseStep
+   // already uses for winners, reused rather than duplicated. No
+   // ordering needed (no profit-sequence rationale for losers) -- plain
+   // ticket list. Used for BOTH InpCloseLosersBulk settings: bulk mode
+   // does a best-effort CloseAllPositionsBySide first, then this sequence
+   // is (re)built from whatever's still open -- empty if bulk fully
+   // worked, so the recheck mechanism is identical either way.
+   ulong          loserPurgeSequence[];
+   int            loserPurgeIndex;
+   bool           loserPurgeInProgress;
+   int            lastLoserPurgeRemainingCount;
+   int            loserPurgeStuckCount;
 
    //--- Margin/session/fault
    bool           marginWarning;
@@ -115,6 +160,11 @@ void ResetGridState(GridState &state)
    state.basketNetProfit    = 0.0;
    state.basketBuyProfit    = 0.0;
    state.basketSellProfit   = 0.0;
+   state.buyVolume          = 0.0;
+   state.buyAvgEntry        = 0.0;
+   state.sellVolume         = 0.0;
+   state.sellAvgEntry       = 0.0;
+   state.winnerStoppedOut   = false;
    state.slApplied          = false;
    state.slLevel            = 0.0;
    state.slWinnerSide       = -1;
@@ -124,6 +174,14 @@ void ResetGridState(GridState &state)
    state.cleanupType        = InpCleanupMode;
    state.cleanupInProgress  = false;
    state.cleanupStep        = 0;
+   state.lastCleanupUnstickCheck = 0;
+   state.lastCleanupRemainingCount = -1;
+   state.cleanupStuckCount = 0;
+   ArrayResize(state.loserPurgeSequence, 0);
+   state.loserPurgeIndex = 0;
+   state.loserPurgeInProgress = false;
+   state.lastLoserPurgeRemainingCount = -1;
+   state.loserPurgeStuckCount = 0;
    state.marginWarning      = false;
    state.sessionAllowed     = false;
    state.gapFaultDetected   = false;

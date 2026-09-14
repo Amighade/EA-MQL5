@@ -172,4 +172,34 @@ void BuildAbsProfitPositionOrder(int magicNumber, ulong &orderedTickets[])
       orderedTickets[i] = tickets[i];
   }
   
+//+------------------------------------------------------------------+
+//| [REV-2026-09-12-BACKBONE] why: the loser-purge at arm time needs a|
+//| one-shot bulk close of just the losing side, filtered by magic +  |
+//| symbol per the multi-EA-account concern raised this session. No   |
+//| ordering needed here (unlike the winner-side cleanup) -- these all|
+//| close synchronously in one burst, there's no "wait for the next   |
+//| confirmation" pacing rationale like there is for winners.         |
+//+------------------------------------------------------------------+
+void CloseAllPositionsBySide(int magicNumber, ENUM_POSITION_TYPE side)
+  {
+   ulong tickets[];
+   int   n = 0;
+   int   total = PositionsTotal();
+   ArrayResize(tickets, total);
+
+   for(int i = 0; i < total; i++)
+     {
+      ulong t = PositionGetTicket(i);
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)     continue;
+      if(PositionGetInteger(POSITION_MAGIC) != magicNumber) continue;
+      if((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != side) continue;
+      tickets[n] = t;
+      n++;
+     }
+
+   for(int i = 0; i < n; i++)
+      ClosePosition(tickets[i]);
+  }
+
 #endif

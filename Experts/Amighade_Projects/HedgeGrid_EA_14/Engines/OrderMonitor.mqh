@@ -60,6 +60,76 @@ ulong CheckGapFault(double currentPrice, int magicNumber, double &expectedPrice)
   }
 
 //+------------------------------------------------------------------+
+//| [REV-2026-09-12-BACKBONE]                                          |
+//| Incrementally maintain per-side {volume, avgEntry} from deal      |
+//| history -- the O(1) input SideProfitAtPrice() needs. Called from  |
+//| OnTradeTransaction for BOTH DEAL_ENTRY_IN (open) and OUT/INOUT/   |
+//| OUT_BY (close) deals, any DEAL_REASON.                            |
+//|                                                                    |
+//| Side is derived from deal_type + dealEntry, not PositionGetInteger|
+//| on the position ticket -- a fully-closing OUT deal can leave the  |
+//| position unselectable by the time this runs, but a BUY deal       |
+//| closing always means a SELL position (and vice versa), so this    |
+//| works even then.                                                   |
+//|                                                                    |
+//| Winner side freezes once armed (trailing owns it via              |
+//| g_ArmedWinnerTickets/SL orders, not this aggregate -- confirmed no |
+//| live profit needed for trailing). Loser side keeps updating post- |
+//| arm ONLY when InpCloseLosersAtArm is false (losers deliberately   |
+//| left open) so SL_FindCandidate's net-check still sees them.       |
+//+------------------------------------------------------------------+
+void UpdateSideVolumeAggregate(GridState &state, ENUM_DEAL_TYPE dealType,
+                               ENUM_DEAL_ENTRY dealEntry, double lot, double price)
+{
+   bool isOpen = (dealEntry == DEAL_ENTRY_IN);
+
+   // A BUY deal opens/adds-to a BUY position, but CLOSES a SELL position
+   // (and vice versa) -- this is why side can't just be "dealType".
+   ENUM_POSITION_TYPE side;
+   if(isOpen)
+      side = (dealType == DEAL_TYPE_BUY) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+   else
+      side = (dealType == DEAL_TYPE_BUY) ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+
+   if(state.slWallArmed)
+     {
+      bool isWinnerSide = ((int)side == state.slWinnerSide);
+      if(isWinnerSide) return;                 // frozen -- trailing owns this side now
+      if(InpCloseLosersAtArm) return;           // losers purged -- nothing left to track
+      // else: losers intentionally left open -- fall through, keep tracking
+     }
+
+   if(side == POSITION_TYPE_BUY)
+     {
+      if(isOpen)
+        {
+         double newVol = state.buyVolume + lot;
+         if(newVol > 0) state.buyAvgEntry = (state.buyAvgEntry * state.buyVolume + price * lot) / newVol;
+         state.buyVolume = newVol;
+        }
+      else
+        {
+         state.buyVolume -= lot;
+         if(state.buyVolume <= 0.0000001) { state.buyVolume = 0; state.buyAvgEntry = 0; }
+        }
+     }
+   else
+     {
+      if(isOpen)
+        {
+         double newVol = state.sellVolume + lot;
+         if(newVol > 0) state.sellAvgEntry = (state.sellAvgEntry * state.sellVolume + price * lot) / newVol;
+         state.sellVolume = newVol;
+        }
+      else
+        {
+         state.sellVolume -= lot;
+         if(state.sellVolume <= 0.0000001) { state.sellVolume = 0; state.sellAvgEntry = 0; }
+        }
+     }
+}
+
+//+------------------------------------------------------------------+
 //| Process a confirmed order fill                                    |
 //| Updates GridState with hit info, pass counter, and farthest-hit  |
 //| tracking. Returns true if this was a direction switch.           |

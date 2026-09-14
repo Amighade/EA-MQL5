@@ -69,6 +69,8 @@ void StartCleanupSequence(GridState &state)
    state.cleanupType        = InpCleanupMode;
    state.cleanupInProgress  = true;
    state.cleanupStep        = 0;
+   state.lastCleanupRemainingCount = -1;
+   state.cleanupStuckCount  = 0;
 }
 
 //+------------------------------------------------------------------+
@@ -124,6 +126,77 @@ bool ExecuteNextCloseStep(GridState &state)
    ClosePosition(state.closeSequence[state.closeIndex]);
    state.closeIndex++;
    state.cleanupStep++;
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| [REV-2026-09-13-CLOSE-SAFETY]                                      |
+//| Loser-purge sequence, built at arm time. Same paced-close pattern |
+//| as ExecuteNextCloseStep above -- deliberately reused rather than  |
+//| duplicated -- but simpler: no zigzag/profit ordering (no ordering|
+//| rationale for losers, they're not being closed in any sequence   |
+//| that matters), and completion just deletes loser-side orders and |
+//| clears the flag -- no full cycle reset, winners are still armed  |
+//| and waiting on their own SL.                                      |
+//|                                                                    |
+//| Called for BOTH InpCloseLosersBulk settings: when bulk mode has   |
+//| already made a best-effort CloseAllPositionsBySide pass, this     |
+//| (re)scans for whatever's still open -- empty array if bulk fully  |
+//| worked, so it completes immediately with no extra cost. When      |
+//| paced mode is selected, this scans everything on the loser side   |
+//| from scratch and closes it one confirmation at a time.            |
+//+------------------------------------------------------------------+
+void StartLoserPurgeSequence(GridState &state, ENUM_POSITION_TYPE loserSide)
+{
+   ArrayResize(state.loserPurgeSequence, 0);
+   int n = 0;
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      ulong t = PositionGetTicket(i);
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)          continue;
+      if(PositionGetInteger(POSITION_MAGIC) != state.magicNumber) continue;
+      if((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != loserSide) continue;
+      ArrayResize(state.loserPurgeSequence, n+1);
+      state.loserPurgeSequence[n] = t;
+      n++;
+     }
+
+   state.loserPurgeIndex = 0;
+   state.loserPurgeInProgress = true;
+   state.lastLoserPurgeRemainingCount = -1;
+   state.loserPurgeStuckCount = 0;
+}
+
+//+------------------------------------------------------------------+
+//| Close exactly one loser-side position per call. Returns true once |
+//| the loser side is confirmed fully closed.                         |
+//+------------------------------------------------------------------+
+bool ExecuteNextLoserPurgeStep(GridState &state, ENUM_POSITION_TYPE loserSide)
+{
+   if(!state.loserPurgeInProgress) return true;
+
+   while(state.loserPurgeIndex < ArraySize(state.loserPurgeSequence) &&
+         !PositionSelectByTicket(state.loserPurgeSequence[state.loserPurgeIndex]))
+      state.loserPurgeIndex++;
+
+   if(state.loserPurgeIndex >= ArraySize(state.loserPurgeSequence))
+     {
+      // Array drained -- verify nothing on this side survived/reopened
+      // (mirrors ExecuteNextCloseStep's own rescan-before-declaring-done step)
+      if(CountPositionsBySide(state.magicNumber, loserSide) > 0)
+        {
+         StartLoserPurgeSequence(state, loserSide); // rebuild and keep going
+         return false;
+        }
+
+      state.loserPurgeInProgress = false;
+      LogDebug("[SLManager] Loser purge complete.");
+      return true;
+     }
+
+   ClosePosition(state.loserPurgeSequence[state.loserPurgeIndex]);
+   state.loserPurgeIndex++;
    return false;
 }
 

@@ -10,6 +10,28 @@
 #include "../Inputs.mqh"
 
 //+------------------------------------------------------------------+
+//| [REV-2026-09-12-BACKBONE] why: O(1) replacement for looping every |
+//| position to sum profit (CalculateBasketProfits / NetPnLAtCandidate|
+//| / SL_CalcNetBasket all did this per call, per tick while armed).  |
+//| volume/avgEntry come from GridState's incrementally-maintained    |
+//| per-side aggregate (see OrderMonitor::UpdateSideVolumeAggregate). |
+//| Commission is a flat configured rate (InpCommissionPerLot), not   |
+//| something that needs tracking per-fill -- it's just volume*rate.  |
+//+------------------------------------------------------------------+
+double SideProfitAtPrice(ENUM_POSITION_TYPE side, double volume, double avgEntry, double price)
+{
+   if(volume <= 0) return 0.0;
+
+   double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   if(tickVal <= 0 || tickSz <= 0) return -1;
+   double moneyPerPrice = tickVal / tickSz;
+
+   double diff = (side == POSITION_TYPE_BUY) ? (price - avgEntry) : (avgEntry - price);
+   return diff * moneyPerPrice * volume - InpCommissionPerLot * volume;
+}
+
+//+------------------------------------------------------------------+
 //| Snap price to nearest broker tick size                           |
 //+------------------------------------------------------------------+
 double AlignToTick(const string sym, double price)

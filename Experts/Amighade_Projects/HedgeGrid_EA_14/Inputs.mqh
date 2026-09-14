@@ -158,6 +158,22 @@ input int                  InpRunawayN = 2;
 
 input int    InpSLNBack            = 1;        // SL_N_BACK_GRID only: steps back from last hit (1 = last hit's own level)
 
+// [REV-2026-09-12-BACKBONE] why: new selectable behavior being tested (per
+// user request) -- close the losing side immediately once winners are
+// armed, instead of leaving it open until cleanup. Selectable so both can
+// be compared; see Engines/SLManager.mqh ArmSL for the actual logic.
+input bool   InpCloseLosersAtArm   = true;     // Close losing side positions+orders immediately at arm (test mode)
+
+// [REV-2026-09-13-CLOSE-SAFETY] why: bulk (all at once) risks broker
+// rate-limiting (TRADE_RETCODE_TOO_MANY_REQUESTS) since every request
+// fires in one instant with no pacing; one-by-one via real confirmations
+// (same mechanism the winner-side cleanup already uses) avoids that.
+// Default false = paced/one-by-one, per the concluded safer choice.
+// Orders are NOT covered by this flag -- loser-side pending orders always
+// delete in one bulk shot regardless (agreed: no benefit to pacing those).
+input bool   InpCloseLosersBulk    = false;    // Close loser POSITIONS in one bulk burst instead of one-by-one
+input int    InpCloseStuckAlarmAfter = 3;      // Consecutive stagnant recheck cycles (~2s each) before Telegram alarm
+
 //--- BRICK 7: Cleanup type after SL hit / safety stop --------------------
 input ENUM_CLEANUP_MODE InpCleanupMode = CLEANUP_CLOSE_ALL; // What "cleanup" means when triggered
 

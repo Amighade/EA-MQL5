@@ -278,13 +278,8 @@ void ResetSLManager(GridState &state)
 //+------------------------------------------------------------------+
 void ArmSL(GridState &state)
 {
-   //ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
-   ENUM_POSITION_TYPE winnerSide = (state.lastHitDirection == ORDER_TYPE_BUY) ?
-                                   POSITION_TYPE_BUY : POSITION_TYPE_SELL;
-   
+   ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
    double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLArmMode);
-   SLPos list[];
-   //double slLevel = SL_FindCandidate(state, list, count, winnerSide, magicNumber, InpSLArmMode)
    // [REV-2026-09-11-CPU-FIX] why: removed an unguarded Print(...)//AGH debug
    // leftover that ran here on every arm attempt, unconditional on InpEnableDebugLog.
 
@@ -418,8 +413,7 @@ void RecalcOnWinnerClose(GridState &state)
 //+------------------------------------------------------------------+
 void ProcessSLManager(GridState &state)
 {
-   //double net = state.basketProfit;
-   double accountFloatingNet = AccountInfoDouble(ACCOUNT_PROFIT);
+   double net = state.basketProfit;
    //if (InpRunawayN > 0 && state.passCounter >= InpRunawayN) net = state.basketProfit;
    
    if(state.slWallArmed)
@@ -427,9 +421,9 @@ void ProcessSLManager(GridState &state)
       if(InpSLTrailMode != SL_NONE) TrailWall(state);
       return;
      }
-     
+
    if(InpSLArmMode == SL_NONE) return;
-   if(accountFloatingNet <= 0) return;
+   if(net <= 0) return;
    ArmSL(state);
 }
 #endif

@@ -193,21 +193,107 @@ void OnTick()
    // the one real owner for each — never hand-write the fields here.
    // ------------------------------------------------------------
 
-   // Cleanup never got the transaction that should have kicked it off.
-   if(g_state.cleanupInProgress && CountPositions(g_state.magicNumber) == 0)
+   // [REV-2026-09-13-CLOSE-SAFETY] Unified recheck/backstop for BOTH the
+   // winner-side cleanup and the loser-purge sequence. This replaces the
+   // old "only fires when CountPositions()==0" version, which caught a
+   // completely-missed final pulse but NOT a genuinely stuck close (one
+   // that failed and has nothing left to re-trigger it). Runs every ~2s,
+   // not every tick, same throttle as before.
+   //
+   // Stagnation, not just "count > 0", is what triggers a retry: the
+   // remaining count is compared to what it was on the LAST check. If it
+   // changed, real progress is happening via normal confirmations --
+   // don't interfere, that would risk a duplicate close on a ticket
+   // that's already legitimately in flight. Only genuinely unchanged
+   // counts across a full ~2s window count as "stuck" and get retried;
+   // after InpCloseStuckAlarmAfter consecutive stuck checks, alarm via
+   // the same SendTelegramMessage TriggerSafetyStop already uses.
+   if(TimeCurrent() - g_state.lastCleanupUnstickCheck >= 2)
      {
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done)
+      g_state.lastCleanupUnstickCheck = TimeCurrent();
+
+      if(g_state.cleanupInProgress)
         {
-         ResetSLManager(g_state);
-         if(g_state.refillNeeded)
+         int remaining = CountPositions(g_state.magicNumber);
+         if(remaining == 0)
            {
-            ProcessInsideMaintenance(g_state);
-            g_state.refillNeeded = false;
+            g_state.cleanupStuckCount = 0;
+            bool done = ExecuteNextCloseStep(g_state);
+            if(done)
+              {
+               ResetSLManager(g_state);
+               if(g_state.refillNeeded)
+                 {
+                  ProcessInsideMaintenance(g_state);
+                  g_state.refillNeeded = false;
+                 }
+              }
            }
+         else if(remaining == g_state.lastCleanupRemainingCount)
+           {
+            g_state.cleanupStuckCount++;
+            ExecuteNextCloseStep(g_state); // retry -- genuinely stagnant
+            if(g_state.cleanupStuckCount >= InpCloseStuckAlarmAfter)
+               SendTelegramMessage(StringFormat(
+                  "HedgeGrid ALARM: cleanup stuck, %d position(s) not closing.", remaining));
+           }
+         else
+            g_state.cleanupStuckCount = 0; // count changed -- normal progress, don't interfere
+
+         g_state.lastCleanupRemainingCount = remaining;
+        }
+
+      if(g_state.loserPurgeInProgress)
+        {
+         ENUM_POSITION_TYPE loserSide = ((ENUM_POSITION_TYPE)g_state.slWinnerSide == POSITION_TYPE_BUY)
+                                         ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+         int remaining = CountPositionsBySide(g_state.magicNumber, loserSide);
+
+         if(remaining == g_state.lastLoserPurgeRemainingCount)
+           {
+            g_state.loserPurgeStuckCount++;
+            ExecuteNextLoserPurgeStep(g_state, loserSide); // retry -- genuinely stagnant
+            if(g_state.loserPurgeStuckCount >= InpCloseStuckAlarmAfter)
+               SendTelegramMessage(StringFormat(
+                  "HedgeGrid ALARM: loser purge stuck, %d position(s) not closing.", remaining));
+           }
+         else
+            g_state.loserPurgeStuckCount = 0; // count changed (or just completed) -- fine
+
+         g_state.lastLoserPurgeRemainingCount = remaining;
         }
      }
   
+   // ------------------------------------------------------------
+   // [REV-2026-09-12-BACKBONE] The real cleanup trigger now -- a winner
+   // (or any non-self-caused) close was recorded by OnTradeTransaction.
+   // This is the "OnTick decides and acts" half of the flag; the
+   // reconciliation block above stays as a rare-miss backstop only.
+   // ------------------------------------------------------------
+   if(g_state.winnerStoppedOut)
+     {
+      // Clear unconditionally, whether or not we act on it -- otherwise a
+      // burst of several near-simultaneous SL hits (each setting this flag
+      // while cleanup from the first one is already running) would leave
+      // it stuck true and wrongly re-trigger cleanup on some later,
+      // unrelated tick after the real cleanup already finished.
+      g_state.winnerStoppedOut = false;
+      if(!g_state.cleanupInProgress)
+        {
+         StartCleanupSequence(g_state);
+         bool done = ExecuteNextCloseStep(g_state);
+         if(done)
+           {
+            ResetSLManager(g_state);
+            if(g_state.refillNeeded)
+              {
+               ProcessInsideMaintenance(g_state);
+               g_state.refillNeeded = false;
+              }
+           }
+        }
+     }
+
    // Phantom grid: state believes a grid exists, broker has nothing.
    if(g_state.gridPlaced && !g_state.cleanupInProgress &&
       CountPositions(g_state.magicNumber) == 0 &&
@@ -228,8 +314,13 @@ void OnTick()
       LogSessionChange(false, "Session ended");
       
    // (Unstick already handled above for the cleanupInProgress + no positions case)
-  
-   CalculateBasketProfits(g_state);
+
+   // [REV-2026-09-11-CPU-FIX]
+   // Perf: skip the full position-loop profit recompute while cleanup is
+   // running -- OnTick returns right below before anything this tick
+   // would use the result, so it was a wasted scan on every cleanup tick.
+   //if(!g_state.cleanupInProgress)
+   //   CalculateBasketProfits(g_state);
 
    // Closing always outranks opening/modifying — nothing else runs while
    // a cleanup sequence is in progress (it progresses via confirmations
@@ -318,31 +409,54 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       return;
      }
 
+   // ------------------------------------------------------------
+   // [REV-2026-09-13-CLOSE-SAFETY] LOSER PURGE IN PROGRESS — same idea,
+   // one loser-side position per confirmation. Without this gateway,
+   // these closes (DEAL_REASON_EXPERT) would just fall through to the
+   // close branch below, get correctly excluded from winnerStoppedOut,
+   // and then... nothing would ever advance loserPurgeIndex. This is
+   // what actually drives the paced purge pulse-by-pulse.
+   // ------------------------------------------------------------
+   if(g_state.loserPurgeInProgress)
+     {
+      ENUM_POSITION_TYPE loserSide = ((ENUM_POSITION_TYPE)g_state.slWinnerSide == POSITION_TYPE_BUY)
+                                      ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+      ExecuteNextLoserPurgeStep(g_state, loserSide);
+      return;
+     }
+
    ulong positionTicket = trans.position;
    if(positionTicket == 0) return;
 
    // ------------------------------------------------------------
    // A position CLOSED (deal entry OUT / INOUT / OUT_BY).
-   // Big A/B fix: any close is treated as a cleanup trigger, unless
-   // an armed SL wall is still mid-sequence and expects more closes.
+   // [REV-2026-09-12-BACKBONE] why: this used to treat ANY close as an
+   // unconditional cleanup trigger. That broke the moment ArmSL started
+   // bulk-closing the loser side on its own (DEAL_REASON_EXPERT) --
+   // those closes would have immediately re-triggered cleanup right
+   // after arming, undoing the whole "protect winners, wait for their
+   // SL" design. Fix: only DEAL_REASON_EXPERT (our own trade requests --
+   // loser purge here, or cleanup's own closes, though those are already
+   // intercepted above before reaching this branch) is excluded. Every
+   // other reason (SL, SO, manual/client/mobile/web) still sets the
+   // signal, preserving the original "any unexpected close is a safety
+   // trigger" intent for everything that isn't self-caused.
+   //
+   // Per the "transactions record, ticks decide" rule agreed this
+   // session: this only sets a flag. OnTick is the only place that
+   // actually calls StartCleanupSequence.
    // ------------------------------------------------------------
    if(dealEntry == DEAL_ENTRY_OUT ||
       dealEntry == DEAL_ENTRY_INOUT ||
       dealEntry == DEAL_ENTRY_OUT_BY)
      {
-      // SL disabled, or nothing armed, or an unexpected close (manual, etc.)
-      // — Bug fix "Big A/B": there must always be a cleanup trigger.
-      StartCleanupSequence(g_state);
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done)
-        {
-         ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
-         if(g_state.refillNeeded)
-           {
-            ProcessInsideMaintenance(g_state);
-            g_state.refillNeeded = false;
-           }
-        }
+      double closeLot = HistoryDealGetDouble(trans.deal, DEAL_VOLUME);
+      UpdateSideVolumeAggregate(g_state, trans.deal_type, dealEntry, closeLot, 0.0);
+
+      ENUM_DEAL_REASON reason = (ENUM_DEAL_REASON)HistoryDealGetInteger(trans.deal, DEAL_REASON);
+      if(reason != DEAL_REASON_EXPERT)
+         g_state.winnerStoppedOut = true;
+
       return;
      }
 
@@ -367,22 +481,39 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 
    ProcessOrderFill(positionTicket, g_state);
 
+   // [REV-2026-09-12-BACKBONE]: keep the O(1) aggregate current for the
+   // pre-arm decision. Uses the fill's own deal fields, not the position
+   // (matches UpdateSideVolumeAggregate's OUT-side reasoning for symmetry,
+   // and ProcessOrderFill above may have already changed what
+   // PositionGetDouble would report anyway).
+   double openLot   = HistoryDealGetDouble(trans.deal, DEAL_VOLUME);
+   double openPrice = HistoryDealGetDouble(trans.deal, DEAL_PRICE);
+   UpdateSideVolumeAggregate(g_state, trans.deal_type, dealEntry, openLot, openPrice);
+
    // Re-snapshot the armed-winner set on every new fill (closes the
    // "new fill mid-epoch" gap — confirmed: re-snapshot every time).
+   // KNOWN FOLLOW-UP (flagged, not fixed this pass): this still does a
+   // full SnapshotWinners() rebuild rather than appending just the one
+   // new ticket -- discussed as a good idea, not yet implemented.
    ReSnapshotIfArmed(g_state);
 
    // Brick 1 / Brick 2 — each is a no-op internally if its toggle is off.
    UpdateOppositeGrid(g_state);
-   ShiftGrid(g_state);
+   
+   //ShiftGrid(g_state);
 
-   ProcessInsideStrategy(g_state);
+   //ProcessInsideStrategy(g_state);
       
    // was: RefillOutside(g_state);
    g_state.outsideRefillPending = true;
 
-   // Brick 6 — check immediately after a fill too (not just OnTick),
-   // so a newly-profitable basket doesn't wait for the next tick to arm.
-   ProcessSLManager(g_state);
+   // [REV-2026-09-12-BACKBONE] why: removed the direct ProcessSLManager()
+   // call that used to run here on every fill. Arm/trail decisions (and
+   // now the loser-purge burst inside ArmSL) are execution, not
+   // monitoring -- per the "transactions record, ticks decide" rule,
+   // this belongs in OnTick only. OnTick already calls ProcessSLManager
+   // every tick while cycleActive, so this costs at most one tick of
+   // latency (sub-second), not a missed arm.
 
    LogHistory("ORDER_FILL",
               g_state.lastHitPrice,
@@ -401,6 +532,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 void OnTimer()
 {
    UpdateDashboard(g_state);
+   CalculateBasketProfits(g_state);
 
    //ENUM_LOT_MODE newMode = CheckMargin(g_state);
    //if(newMode != g_state.lotMode && !g_state.cycleActive)

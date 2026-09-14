@@ -5,12 +5,15 @@
 //| arm -> snapshot -> trail -> all-closed -> cleanup pipeline that   |
 //| used to be Style-C-only. No more separate "AB path"/"C path".    |
 //|                                                                    |
-//| Trigger: arms as soon as the leading side's basket profit > 0.   |
-//| ASSUMPTION (flagged for confirmation): the old InpSLTriggerByLot /|
-//| InpSLTriggerByProfit toggles were dropped per your instruction;  |
-//| "profit > 0" is the only trigger left, applied unconditionally   |
-//| whenever InpEnableSL is true. Tell me if you want this gated       |
-//| further and I'll add an input back.                              |
+//| Trigger: arms once state.lastHitDirection's side profit > 0,     |
+//| computed O(1) from the incremental {volume, avgEntry} aggregate   |
+//| (see OrderMonitor::UpdateSideVolumeAggregate), not from looping   |
+//| positions or from account-wide floating P/L.                      |
+//|                                                                    |
+//| [REV-2026-09-12-BACKBONE]: once armed, InpCloseLosersAtArm        |
+//| (selectable, see Inputs.mqh) controls whether the losing side is  |
+//| bulk-closed immediately (ArmSL) or left open until the normal     |
+//| cleanup path. Both are supported so they can be compared.         |
 //|                                                                    |
 //| SL PLACEMENT (Bug fix #5 applied — struct moved to file scope):  |
 //|   Candidates are grid lines stepping back from the winning side's|
@@ -38,10 +41,11 @@
 //|   once at arm time — closes the "new fill mid-epoch falls through |
 //|   the cracks" gap.                                                |
 //|                                                                    |
-//| BROKER FAULT (Bug 1.a): if ModifyPositionSL fails after its       |
-//|   internal retries, this immediately calls TriggerSafetyStop —   |
-//|   the same nuclear response as any other exhausted trade-call     |
-//|   failure, not a lighter cleanup.                                 |
+//| BROKER FAULT (updated): if ModifyPositionSL fails after its one   |
+//|   immediate retry (no Sleep), that ticket is closed instead of    |
+//|   nuking the whole basket. TriggerSafetyStop only fires if the    |
+//|   close itself also fails (unprotectable AND unclosable).         |
+//|   See ApplySLToWinners for the full reasoning.                    |
 //+------------------------------------------------------------------+
 #ifndef SL_MANAGER_MQH
 #define SL_MANAGER_MQH
@@ -54,88 +58,60 @@
 #include "../Utils/DebugLogger.mqh"
 #include "../Utils/SafetyNet.mqh"
 
-//--- Struct at file scope (Bug fix #5 — MQL5 forbids struct-in-function)
-struct SLPosInfo
-  {
-   double entryPrice;
-   double lot;
-   int    type;
-  };
-
 //--- Armed-epoch winner ticket set — owned by this engine only
 ulong g_ArmedWinnerTickets[];
 
 //+------------------------------------------------------------------+
-//| Determine winning side by profit                                  |
+//| [REV-2026-09-12-BACKBONE] why: removed CollectAllPositions,       |
+//| SLPosInfo, and NetPnLAtCandidate entirely -- all three existed to |
+//| feed a per-position loop into the old net-PnL check. That check   |
+//| now lives in SLGridFeasibility.mqh's NetBasketAtCandidate(),      |
+//| which uses the O(1) incremental {volume, avgEntry} aggregate on   |
+//| GridState instead (see OrderMonitor::UpdateSideVolumeAggregate).  |
+//| GetWinningDirection() also removed -- winner side now comes from  |
+//| state.lastHitDirection (the actual agreed trigger), never from    |
+//| comparing basketBuyProfit/basketSellProfit.                       |
 //+------------------------------------------------------------------+
-ENUM_POSITION_TYPE GetWinningDirection(GridState &state)
-{
-   double buyP  = state.basketBuyProfit;
-   double sellP = state.basketSellProfit;
-   return (buyP >= sellP) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
-}
 
 //+------------------------------------------------------------------+
-//| Collect all open positions for this EA into a flat array          |
-//+------------------------------------------------------------------+
-int CollectAllPositions(int magicNumber, SLPos &positions[])
-{
-   int count = 0;
-   for(int i = 0; i < PositionsTotal(); i++)
-     {
-      ulong t = PositionGetTicket(i);
-      if(!PositionSelectByTicket(t)) continue;
-      if(PositionGetString(POSITION_SYMBOL) != _Symbol)     continue;
-      if(PositionGetInteger(POSITION_MAGIC) != magicNumber) continue;
-      ArrayResize(positions, count+1);
-      positions[count].ticket = t;
-      positions[count].entry  = PositionGetDouble(POSITION_PRICE_OPEN);
-      positions[count].lot    = PositionGetDouble(POSITION_VOLUME);
-      positions[count].type   = (int)PositionGetInteger(POSITION_TYPE);
-      count++;
-     }
-   return count;
-}
-   
-//+------------------------------------------------------------------+
-//| Net PnL of the whole basket if closed at candidateSL              |
-//+------------------------------------------------------------------+
-double NetPnLAtCandidate(double candidateSL, ENUM_POSITION_TYPE winnerSide,
-                         const SLPosInfo &positions[], int count,
-                         double moneyPerPrice, double spread)
-{
-   double netPnL = 0.0;
-   for(int i = 0; i < count; i++)
-     {
-      double entry = positions[i].entryPrice;
-      double lot   = positions[i].lot;
-      int    type  = positions[i].type;
-
-      double priceDiff = (type == POSITION_TYPE_BUY) ?
-                         candidateSL - entry :
-                         entry - (candidateSL + spread);
-
-      netPnL += priceDiff * moneyPerPrice * lot;
-      netPnL -= InpCommissionPerLot * lot;
-     }
-   return netPnL;
-}
-
-//+------------------------------------------------------------------+
-//| Grid-line SL candidate search (Brick 6 core algorithm)            |
+//| Grid-line SL candidate search (Brick 6 core algorithm).           |
+//| [REV-2026-09-12-BACKBONE] why: the old CountMatchingPositions      |
+//| early-exit guard is gone -- SL_FindCandidate is already O(1) or    |
+//| bounded by InpSLNBack now (no position loop left inside it at     |
+//| all), so there's no expensive work left to guard against. Kept as |
+//| a thin wrapper (not inlined into callers) on purpose -- ArmSL and |
+//| TrailWall both call this single choke point rather than           |
+//| SL_FindCandidate directly, so they can never independently drift  |
+//| the way TrailWall/TrailWall_orgn once did.                        |
 //+------------------------------------------------------------------+
 double CalculateSLCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide, int magicNumber,
                             ENUM_SL_MODE mode)
 {
-   SLPos list[];
-   int count = CollectAllPositions(magicNumber, list);
-   if(count <= 0) return 0;
-   return SL_FindCandidate(state, list, count, winnerSide, magicNumber, mode);
+   return SL_FindCandidate(state, winnerSide, magicNumber, mode);
 }
 //+------------------------------------------------------------------+
 //| Apply SL to every ticket in the armed-winner snapshot.            |
-//| Returns applied count, or -1 if a modify failed and a safety      |
-//| stop was triggered (caller must abort further processing).        |
+//| Returns applied count (0..N). A ticket that can't be protected is |
+//| closed instead (see below) — it no longer aborts the whole batch, |
+//| so this never returns -1 anymore. The -1 checks in ArmSL/TrailWall|
+//| are kept as harmless dead guards rather than ripped out.          |
+//|                                                                    |
+//| [REV-2026-09-11-CPU-FIX] why: TriggerSafetyStop on every SL-modify |
+//| rejection nuked the whole basket for what's often one transient   |
+//| requote -- disproportionate, and rejections were frequent.        |
+//| Design change (agreed): a modify failure used to be treated as a  |
+//| basket-wide emergency (TriggerSafetyStop closes/deletes           |
+//| everything). That's a wildly disproportionate response to one     |
+//| ticket getting rejected. New behavior:                            |
+//|   1. ModifyPositionSL already pre-validates via ValidateStopPrice |
+//|      and now does at most one immediate retry, no Sleep.          |
+//|   2. If it still fails, close JUST that ticket instead of the     |
+//|      whole basket. A ticket closed this way looks identical to    |
+//|      one closed by a real SL hit to AllWinnersClosed() / the rest |
+//|      of this file — no special-casing needed elsewhere.           |
+//|   3. Only if the close ALSO fails (now genuinely unprotectable    |
+//|      AND unclosable) do we escalate to TriggerSafetyStop — that   |
+//|      case still deserves the nuclear response.                    |
 //+------------------------------------------------------------------+
 int ApplySLToWinners(double slLevel, GridState &state)
 {
@@ -151,11 +127,19 @@ int ApplySLToWinners(double slLevel, GridState &state)
       if(oldNorm == slNorm && slNorm > 0.0) { count++; continue; }
 
       if(ModifyPositionSL(t, slLevel))
-         count++;
-      else
         {
-         // Bug 1.a: SL modification failure -> immediate safety stop
-         TriggerSafetyStop(state, StringFormat("SL_MODIFY_FAILED ticket=%I64u", t));
+         count++;
+         continue;
+        }
+
+      // Modify failed even after ModifyPositionSL's own one retry.
+      // Can't protect it -> close it, rather than nuke the whole basket.
+      LogDebug(StringFormat("SL_MODIFY_FAILED ticket=%I64u -> closing position instead", t));
+      if(!ClosePosition(t))
+        {
+         // Genuinely unprotectable AND unclosable — this is the case
+         // that still warrants the emergency stop.
+         TriggerSafetyStop(state, StringFormat("SL_MODIFY_AND_CLOSE_FAILED ticket=%I64u", t));
          return -1;
         }
      }
@@ -219,14 +203,39 @@ void ResetSLManager(GridState &state)
 }
 
 //+------------------------------------------------------------------+
-//| Arm the SL wall: compute initial safe level, snapshot, apply.    |
+//| Arm the SL wall: compute initial safe level, snapshot, apply,     |
+//| then deal with the losing side (Brick 6 + new backbone).          |
+//|                                                                    |
+//| [REV-2026-09-12-BACKBONE] Sequence, per the agreed backbone:      |
+//|   1. Arm winners with SL (unchanged mechanism).                   |
+//|   2. If InpCloseLosersAtArm: bulk-close every loser-side position |
+//|      in ONE loop (no ordering needed -- unlike winner cleanup,    |
+//|      there's no "wait for next confirmation" pacing rationale for |
+//|      losers, they're not being closed in any profit sequence),    |
+//|      then bulk-delete every loser-side pending order.             |
+//|   3. Reset the winner-side aggregate to 0 (frozen from here on --  |
+//|      trailing doesn't need live profit, confirmed). Loser-side    |
+//|      aggregate is only reset if it was actually purged in step 2  |
+//|      -- if InpCloseLosersAtArm is false, it keeps updating so     |
+//|      NetBasketAtCandidate() during trailing still sees real       |
+//|      numbers for that intentionally-still-open side.              |
+//|                                                                    |
+//| NOTE (flagged, not resolved): closing the loser side the moment   |
+//| the winner side ticks barely positive removes the hedge for that  |
+//| cycle -- a real reversal right after would realize a loss with    |
+//| nothing left open to absorb it. That's a strategy trade-off, not  |
+//| an engineering one; InpCloseLosersAtArm exists so both can be     |
+//| compared rather than committing to one permanently.               |
 //+------------------------------------------------------------------+
 void ArmSL(GridState &state)
 {
-   ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
+   ENUM_POSITION_TYPE winnerSide = (state.lastHitDirection == ORDER_TYPE_BUY) ?
+                                   POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+   ENUM_POSITION_TYPE loserSide  = (winnerSide == POSITION_TYPE_BUY) ?
+                                   POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+
    double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLArmMode);
-   Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel, " basketNetProfit: ", state.basketNetProfit);//AGH
-   
+
    if(slLevel <= 0) return; // not safe yet, try again next tick
 
    SnapshotWinners(state.magicNumber, winnerSide);
@@ -235,6 +244,39 @@ void ArmSL(GridState &state)
    int applied = ApplySLToWinners(slLevel, state);
    if(applied < 0) return; // safety stop already triggered
    if(applied == 0) return;
+
+   // [REV-2026-09-13-CLOSE-SAFETY] why: bulk-close was replaced with the
+   // same paced, confirmation-based mechanism the winner-side cleanup
+   // already uses -- avoids the broker rate-limit risk a burst of
+   // simultaneous close requests carries (TRADE_RETCODE_TOO_MANY_REQUESTS
+   // exists for a reason). InpCloseLosersBulk still allows a bulk
+   // first-pass for comparison; either way, StartLoserPurgeSequence
+   // below rescans and picks up whatever's still open, so the recheck
+   // path is identical regardless of which mode ran first. Orders are
+   // NOT paced -- deleting a resting (not yet triggered) pending order
+   // has no broker-burst risk the way closing a live position does, so
+   // they stay a single bulk call, unconditionally, immediately.
+   if(InpCloseLosersAtArm)
+     {
+      DeleteOrdersBySide(state.magicNumber, loserSide);
+      if(InpCloseLosersBulk)
+         CloseAllPositionsBySide(state.magicNumber, loserSide);
+
+      StartLoserPurgeSequence(state, loserSide);
+      ExecuteNextLoserPurgeStep(state, loserSide);
+
+      // Freeze the loser-side aggregate NOW, not when the paced close
+      // finishes -- once the purge decision is made, NetBasketAtCandidate
+      // shouldn't keep counting a side that's committed to closing, even
+      // while a few of its positions are still draining through pulses.
+      if(loserSide == POSITION_TYPE_BUY) { state.buyVolume = 0; state.buyAvgEntry = 0; }
+      else                               { state.sellVolume = 0; state.sellAvgEntry = 0; }
+     }
+
+   // Winner side is always frozen from here -- trailing owns it via
+   // g_ArmedWinnerTickets/the SL order itself, not this aggregate.
+   if(winnerSide == POSITION_TYPE_BUY) { state.buyVolume = 0; state.buyAvgEntry = 0; }
+   else                                { state.sellVolume = 0; state.sellAvgEntry = 0; }
 
    state.slWallArmed  = true;
    state.slApplied    = true;
@@ -294,12 +336,20 @@ void TrailWall(GridState &state)
    //ENUM_POSITION_TYPE winnerSide = GetWinningDirection(state);
    ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
    double slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLTrailMode);
-   
-   Print(__FILE__ ," Line: ", __LINE__ , "  slLevel: " , slLevel, " basketNetProfit: ", state.basketNetProfit);//AGH
-   
+   // [REV-2026-09-11-CPU-FIX] why: removed an unguarded Print(...)//AGH debug
+   // leftover that fired every tick while the SL wall was armed.
+
    if(slLevel <= 0) return; // not safe yet, try again next tick
 
-   SnapshotWinners(state.magicNumber, winnerSide);
+   // [REV-2026-09-11-CPU-FIX] why: this SnapshotWinners() call re-scanned every
+   // open position every tick while armed for no benefit.
+   // Perf: removed the unconditional SnapshotWinners() call that used to
+   // sit here -- it re-scanned every open position every tick, but the
+   // armed-winner set only ever changes on a new fill, which is already
+   // captured correctly and exclusively via ReSnapshotIfArmed (called
+   // from the coordinator on every fill while armed) and the initial
+   // snapshot in ArmSL. Re-running it here every tick just rebuilt the
+   // same array over and over for no reason.
    if(ArraySize(g_ArmedWinnerTickets) == 0) return;
 
    int applied = ApplySLToWinners(slLevel, state);
@@ -346,12 +396,22 @@ void RecalcOnWinnerClose(GridState &state)
 //+------------------------------------------------------------------+
 //| Master entry point. No-op unless InpEnableSL is true.            |
 //| Call every tick from coordinator.                                 |
+//|                                                                    |
+//| [REV-2026-09-12-BACKBONE] why: replaced AccountInfoDouble         |
+//| (ACCOUNT_PROFIT) with the per-side O(1) aggregate. ACCOUNT_PROFIT |
+//| is account-wide -- floating P/L from every symbol and magic on    |
+//| the account, not just this EA's own basket. Fine on an account    |
+//| running only this EA; wrong the moment anything else trades on    |
+//| it (flagged, not yet handled -- user is aware, to revisit if this |
+//| account ever runs more than one EA/symbol).                       |
+//|                                                                    |
+//| The check is scoped to state.lastHitDirection specifically (the   |
+//| most recent fill's side), not "whichever side happens to be       |
+//| positive" -- per the agreed trigger: the recent fill names the    |
+//| candidate winner, and ITS profit crossing positive is what arms.  |
 //+------------------------------------------------------------------+
 void ProcessSLManager(GridState &state)
 {
-   double net = state.basketProfit;
-   //if (InpRunawayN > 0 && state.passCounter >= InpRunawayN) net = state.basketProfit;
-   
    if(state.slWallArmed)
      {
       if(InpSLTrailMode != SL_NONE) TrailWall(state);
@@ -359,7 +419,16 @@ void ProcessSLManager(GridState &state)
      }
 
    if(InpSLArmMode == SL_NONE) return;
-   if(net <= 0) return;
+
+   ENUM_POSITION_TYPE candidateSide = (state.lastHitDirection == ORDER_TYPE_BUY) ?
+                                      POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+   double vol   = (candidateSide == POSITION_TYPE_BUY) ? state.buyVolume   : state.sellVolume;
+   double entry = (candidateSide == POSITION_TYPE_BUY) ? state.buyAvgEntry : state.sellAvgEntry;
+   double price = (candidateSide == POSITION_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                                                        : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+   double profit = SideProfitAtPrice(candidateSide, vol, entry, price);
+   if(profit <= 0) return;
    ArmSL(state);
 }
 #endif

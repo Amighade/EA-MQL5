@@ -242,8 +242,8 @@ void OnTick()
    // Perf: skip the full position-loop profit recompute while cleanup is
    // running -- OnTick returns right below before anything this tick
    // would use the result, so it was a wasted scan on every cleanup tick.
-   //if(!g_state.cleanupInProgress)
-   //   CalculateBasketProfits(g_state);
+   if(!g_state.cleanupInProgress)
+      CalculateBasketProfits(g_state);
 
    // Closing always outranks opening/modifying — nothing else runs while
    // a cleanup sequence is in progress (it progresses via confirmations
@@ -387,10 +387,9 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 
    // Brick 1 / Brick 2 — each is a no-op internally if its toggle is off.
    UpdateOppositeGrid(g_state);
-   
-   //ShiftGrid(g_state);
+   ShiftGrid(g_state);
 
-   //ProcessInsideStrategy(g_state);
+   ProcessInsideStrategy(g_state);
       
    // was: RefillOutside(g_state);
    g_state.outsideRefillPending = true;
@@ -416,7 +415,6 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 void OnTimer()
 {
    UpdateDashboard(g_state);
-   CalculateBasketProfits(g_state);
 
    //ENUM_LOT_MODE newMode = CheckMargin(g_state);
    //if(newMode != g_state.lotMode && !g_state.cycleActive)

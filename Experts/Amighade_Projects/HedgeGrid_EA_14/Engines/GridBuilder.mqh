@@ -300,6 +300,14 @@ void BuildGrid(double price, ENUM_LOT_MODE lotMode, GridState &state)
 {
    double firstBuy, firstSell;
 
+   // [REV-2026-09-12-BACKBONE] why: fresh grid = no positions yet, so the
+   // incremental per-side profit aggregate must start clean here too --
+   // ResetGridState covers this on a full cycle reset, but not every path
+   // that reaches BuildGrid goes through ResetGridState first (e.g. the
+   // phantom-grid recovery path), so it's reset explicitly here as well.
+   state.buyVolume    = 0; state.buyAvgEntry  = 0;
+   state.sellVolume   = 0; state.sellAvgEntry = 0;
+
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double spread  = ask - bid;
@@ -576,8 +584,15 @@ void RefillOutside(GridState &state)
 
    if(snap.sellOrderCount + snap.buyOrderCount == 0 && snap.positionCount == 0) return;
 
+   // [REV-2026-09-12-BACKBONE] why: once armed, only the winner side keeps
+   // refilling -- the loser side is either already gone (InpCloseLosersAtArm)
+   // or intentionally left alone until cleanup, either way it shouldn't
+   // keep growing new pending orders while the wall is up.
+   bool skipSell = state.slWallArmed && (ENUM_POSITION_TYPE)state.slWinnerSide != POSITION_TYPE_SELL;
+   bool skipBuy  = state.slWallArmed && (ENUM_POSITION_TYPE)state.slWinnerSide != POSITION_TYPE_BUY;
+
    // ---- SELL side ----
-   if(snap.sellOrderCount < InpMinGridLevels)
+   if(!skipSell && snap.sellOrderCount < InpMinGridLevels)
      {
       double anchor = snap.lowestSellOrderPrice;
       double anchorLot = snap.lowestSellOrderLot;
@@ -604,7 +619,7 @@ void RefillOutside(GridState &state)
      }
 
    // ---- BUY side ----
-   if(snap.buyOrderCount < InpMinGridLevels)
+   if(!skipBuy && snap.buyOrderCount < InpMinGridLevels)
      {
       double anchor = snap.highestBuyOrderPrice;
       double anchorLot = snap.highestBuyOrderLot;
