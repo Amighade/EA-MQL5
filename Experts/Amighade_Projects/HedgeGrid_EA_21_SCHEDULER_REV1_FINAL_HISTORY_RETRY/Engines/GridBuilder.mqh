@@ -829,6 +829,43 @@ bool VerifyFreshGrid(GridState &state)
    return true;
 }
 
+void CheckAndBuildGrid(GridState &state)
+{
+   //if(!IsNewBar(state.lastBarGridCheck)) return;
+   if(!state.sessionAllowed)             return;
+   if(state.gridPlaced)                  return;
+   if(state.cleanupInProgress)           return; // closing always outranks opening
+   if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE)
+     {
+      ENUM_TIMEFRAMES tf = (Timeframe == 0) ? (ENUM_TIMEFRAMES)Period() : Timeframe;
+      double prevHigh = iHigh(_Symbol, tf, 1);
+      double prevLow  = iLow(_Symbol, tf, 1);
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+      if(bid < prevLow || bid > prevHigh)
+         return;   // price outside prev bar's range — wait, re-check next tick
+   
+      double range   = prevHigh - prevLow;
+      double spread  = ask - bid;
+      double minStop = MinStopDistancePrice(_Symbol);
+   
+      if(range < spread + minStop)
+         return;   // range fundamentally too small for a valid grid, no matter where price sits
+   
+      if((prevHigh - ask) < minStop || (bid - prevLow) < minStop)
+         return;   // range is wide enough overall, but price sits too close to one specific edge
+     }
+
+   if(state.marginWarning && AccountInfoDouble(ACCOUNT_MARGIN_FREE) < InpMinAllowedMargin)
+     {
+      LogDebug("[Coordinator] Margin still insufficient — skipping build this candle.");
+      return;
+     }
+   //Print(__FILE__,__LINE__," state.gridPlaced: ",state.gridPlaced);
+   BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), state);
+   LogDebug("[Coordinator] New candle, no grid present — grid built.");
+}
 //+------------------------------------------------------------------+
 //| Reset Grid engine state                                         |
 //+------------------------------------------------------------------+

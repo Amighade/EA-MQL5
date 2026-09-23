@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
 //| HedgeGrid.mq5                                                     |
-//| Main EA coordinator — "brick" architecture + Rev 21 scheduler                |
+//| Main EA coordinator — "brick" architecture + Rev 22 scheduler                |
 //| Rules:                                                           |
 //|   - Every behavior is an independent, toggleable brick            |
 //|     (see Inputs.mqh). No more hardcoded Style A/B/C engines.      |
@@ -16,7 +16,7 @@
 //|     never immediately on session start.                            |
 //+------------------------------------------------------------------+
 #property copyright "HedgeGrid EA"
-#property version   "21.00"
+#property version   "22.30"
 #property strict
 
 #include "Inputs.mqh"
@@ -35,68 +35,15 @@
 #include "Engines/GridBuilder.mqh"
 #include "Engines/OrderMonitor.mqh"
 #include "Engines/GridUpdater.mqh"
-#include "Engines/ShiftingEngine.mqh"
+//#include "Engines/ShiftingEngine.mqh"
 #include "Engines/SLManager.mqh"
 #include "Engines/CleanupReset.mqh"
-#include "Engines/Recentering.mqh"
+//#include "Engines/Recentering.mqh"
 #include "Dashboard/ChartPanel.mqh"
 #include "Utils/StatePersistence.mqh"
 #include "Engines/TimerEngine.mqh"
 
 GridState g_state;
-
-
-//+------------------------------------------------------------------+
-//| Items 9/10: at the start of each new candle, check whether a     |
-//| grid needs to be built, and build one if not.                    |
-//| This lives in the coordinator (not a separate "engine") because  |
-//| it orchestrates two engines (MarginCheck + GridBuilder) — engines |
-//| never call each other directly, only the coordinator may.         |
-//|                                                                    |
-//| This is the ONLY place a grid gets built after EA start:          |
-//|   - OnInit no longer builds a grid (item 11).                     |
-//|   - OnTick no longer builds immediately when a session starts.    |
-//| On the EA's very first run, gridPlaced starts false, so the first |
-//| candle-open tick after start builds the first grid automatically.|
-//+------------------------------------------------------------------+
-void CheckAndBuildGrid(GridState &state)
-{
-   //if(!IsNewBar(state.lastBarGridCheck)) return;
-   if(!state.sessionAllowed)             return;
-   if(state.gridPlaced)                  return;
-   if(state.cleanupInProgress)           return; // closing always outranks opening
-   if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE)
-     {
-      ENUM_TIMEFRAMES tf = (Timeframe == 0) ? (ENUM_TIMEFRAMES)Period() : Timeframe;
-      double prevHigh = iHigh(_Symbol, tf, 1);
-      double prevLow  = iLow(_Symbol, tf, 1);
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   
-      if(bid < prevLow || bid > prevHigh)
-         return;   // price outside prev bar's range — wait, re-check next tick
-   
-      double range   = prevHigh - prevLow;
-      double spread  = ask - bid;
-      double minStop = MinStopDistancePrice(_Symbol);
-   
-      if(range < spread + minStop)
-         return;   // range fundamentally too small for a valid grid, no matter where price sits
-   
-      if((prevHigh - ask) < minStop || (bid - prevLow) < minStop)
-         return;   // range is wide enough overall, but price sits too close to one specific edge
-     }
-
-   if(state.marginWarning && AccountInfoDouble(ACCOUNT_MARGIN_FREE) < InpMinAllowedMargin)
-     {
-      LogDebug("[Coordinator] Margin still insufficient — skipping build this candle.");
-      return;
-     }
-   //Print(__FILE__,__LINE__," state.gridPlaced: ",state.gridPlaced);
-   BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), state);
-   LogDebug("[Coordinator] New candle, no grid present — grid built.");
-}
-
 //+------------------------------------------------------------------+
 //| OnInit                                                            |
 //| Item 11: does NOT build a grid. Editing an input on a running     |
@@ -173,7 +120,10 @@ void OnDeinit(const int reason)
    
    if(reason == REASON_REMOVE || reason == REASON_TEMPLATE ||
       reason == REASON_PROGRAM || reason == REASON_INITFAILED)
-   { ExecuteEmergencyClose(g_state); ResetSLManager(g_state); }
+   {
+      ExecuteDeinitSafetyClose(g_state, "EA_DEINITIALIZATION");
+      ResetSLManager(g_state);
+   }
 
    bool preserve = (reason == REASON_PARAMETERS || reason == REASON_CHARTCHANGE ||
                     reason == REASON_RECOMPILE  || reason == REASON_CHARTCLOSE ||
@@ -187,24 +137,6 @@ void OnDeinit(const int reason)
       if(FileIsExist(fname)) FileDelete(fname);
      }
    ShutdownSchedulerRuntime();
-}
-
-//+------------------------------------------------------------------+
-//| OnTick                                                            |
-//| REV 21: market events are state snapshots, not work queues.      |
-//| The newest tick overwrites the previous one. All expensive logic  |
-//| is scheduled by OnTimer().                                       |
-//+------------------------------------------------------------------+
-void OnTick()
-{
-   MqlTick tick;
-   if(SymbolInfoTick(_Symbol, tick))
-     {
-      // IMPORTANT: do not queue ticks. During volatility, keeping every
-      // historical tick would turn market speed directly into EA workload.
-      g_latestTick      = tick;
-      g_latestTickValid = true;
-     }
 }
 
 //+------------------------------------------------------------------+
@@ -242,9 +174,10 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    item.deal      = trans.deal;
    item.requestId = result.request_id;
    item.retcode   = (int)result.retcode;
-   item.dealType  = trans.deal_type;
-   item.volume    = trans.volume;
-   item.price     = trans.price;
+   item.dealType       = trans.deal_type;
+   item.volume         = trans.volume;
+   item.price          = trans.price;
+   item.historyRetries = 0; // REV 22.3: bounded history retry starts from a known value.
 
    QueueTransaction(item);
 }
