@@ -25,6 +25,7 @@
 #include "../Utils/BarUtils.mqh"
 #include "../Utils/SessionFilter.mqh"
 #include "../Utils/CloseOrderUtils.mqh"
+#include "../Utils/ProfilerUtils.mqh"
 #include "../Engines/OrderMonitor.mqh"
 #include "../Engines/GridBuilder.mqh"
 #include "../Engines/GridUpdater.mqh"
@@ -153,6 +154,11 @@ void SchedulerRecordFrameWork(ulong frameStartUs)
          g_lastFrameWorkUs,
          g_maxFrameWorkUs
       );
+
+      // REV 22.3 diagnostic profiler: report only functions that were called
+      // during this 10-second interval. Parent timings include child timings;
+      // blocking calls are also timed separately for attribution.
+      ProfilerPrintAndResetInterval();
 
       g_lastCpuReportMs = nowMs;
      }
@@ -284,7 +290,11 @@ bool ProcessTransactionQueue(ulong frameStartUs, ulong budgetUs, GridState &stat
          //if(!HistoryDealSelect(tx.deal))
          //   return false; // keep the event for a later retry
            
-         if(!HistoryDealSelect(tx.deal))
+         ulong profHistoryStart = GetMicrosecondCount();
+         bool historySelected = HistoryDealSelect(tx.deal);
+         ProfilerRecord(PROF_HISTORY_DEAL_SELECT, profHistoryStart);
+
+         if(!historySelected)
             {
                tx.historyRetries++;
             
@@ -311,7 +321,9 @@ bool ProcessTransactionQueue(ulong frameStartUs, ulong budgetUs, GridState &stat
          if(magic == state.magicNumber)
            {
             ENUM_DEAL_ENTRY entry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(tx.deal, DEAL_ENTRY);
+            ulong profAggregateStart = GetMicrosecondCount();
             UpdateSideVolumeAggregate(state, tx.dealType, entry, tx.volume, tx.price);
+            ProfilerRecord(PROF_UPDATE_SIDE_AGGREGATE, profAggregateStart);
 
             if(entry == DEAL_ENTRY_IN)
               {
@@ -400,6 +412,7 @@ bool ProcessFillWork(ulong frameStartUs, ulong budgetUs, GridState &state)
       switch(g_activeFillStage)
         {
          case 0:
+           {
             // A position can disappear between DEAL_ADD capture and queued
             // processing. In that case the event is historical data, not a
             // reason to mutate strategy state.
@@ -411,19 +424,30 @@ bool ProcessFillWork(ulong frameStartUs, ulong budgetUs, GridState &state)
                CompactFillQueue();
                continue;
               }
+            ulong profStageStart = GetMicrosecondCount();
             ProcessOrderFill(g_activeFill.positionTicket, state);
+            ProfilerRecord(PROF_FILL_PROCESS_ORDER_FILL, profStageStart);
             g_activeFillStage++;
             break;
+           }
 
          case 1:
+           {
+            ulong profStageStart = GetMicrosecondCount();
             ReSnapshotIfArmed(state);
+            ProfilerRecord(PROF_FILL_RESNAPSHOT, profStageStart);
             g_activeFillStage++;
             break;
+           }
 
          case 2:
+           {
+            ulong profStageStart = GetMicrosecondCount();
             UpdateOppositeGrid(state);
+            ProfilerRecord(PROF_FILL_UPDATE_OPPOSITE_GRID, profStageStart);
             g_activeFillStage++;
             break;
+           }
 
          //case 3:
             //ShiftGrid(state);
@@ -431,9 +455,13 @@ bool ProcessFillWork(ulong frameStartUs, ulong budgetUs, GridState &state)
             //break;
 
          case 3:
+           {
+            ulong profStageStart = GetMicrosecondCount();
             ProcessInsideStrategy(state);
+            ProfilerRecord(PROF_FILL_INSIDE_STRATEGY, profStageStart);
             g_activeFillStage++;
             break;
+           }
 
          case 4:
             // Matches the original OnTradeTransaction behavior: outside
@@ -444,14 +472,20 @@ bool ProcessFillWork(ulong frameStartUs, ulong budgetUs, GridState &state)
             break;
 
          case 5:
+           {
             // Basket profit is normally refreshed by the fast tier before SL
             // work. This call preserves the original post-fill SL check.
             //CalculateBasketProfits(state);
+            ulong profStageStart = GetMicrosecondCount();
             ProcessSLManager(state);
+            ProfilerRecord(PROF_FILL_SL_MANAGER, profStageStart);
             g_activeFillStage++;
             break;
+           }
 
          case 6:
+           {
+            ulong profStageStart = GetMicrosecondCount();
             LogHistory("ORDER_FILL",
                        state.lastHitPrice,
                        state.lastHitDirection==ORDER_TYPE_BUY ? "BUY" : "SELL",
@@ -461,8 +495,10 @@ bool ProcessFillWork(ulong frameStartUs, ulong budgetUs, GridState &state)
                        state.basketProfit,
                        state.sessionAllowed,
                        AccountInfoDouble(ACCOUNT_MARGIN_FREE));
+            ProfilerRecord(PROF_FILL_LOG_HISTORY, profStageStart);
             g_activeFillStage++;
             break;
+           }
 
          default:
             g_fillHead++;
@@ -507,7 +543,9 @@ void ExecuteFastTasks(ulong frameStartUs, ulong budgetUs, ulong nowMs, GridState
      {
       ulong tierStart = GetMicrosecondCount();
 
+      ulong profSessionStart = GetMicrosecondCount();
       ProcessSessionTask(nowMs, state);
+      ProfilerRecord(PROF_SESSION_TASK, profSessionStart);
 
       // Basket data is current-state data, not an event queue. Refresh it at
       // the fast tier cadence so SL logic does not scan on every incoming tick.
@@ -515,13 +553,21 @@ void ExecuteFastTasks(ulong frameStartUs, ulong budgetUs, ulong nowMs, GridState
       //   CalculateBasketProfits(state);
 
       if(!state.cleanupInProgress)
+        {
+         ulong profFillStart = GetMicrosecondCount();
          ProcessFillWork(frameStartUs, budgetUs, state);
+         ProfilerRecord(PROF_PROCESS_FILL_WORK, profFillStart);
+        }
 
       // The fill state machine may have consumed part of the budget. Recheck
       // before starting another potentially expensive SL search.
       if(SchedulerBudgetAvailable(frameStartUs, budgetUs) &&
          !state.cleanupInProgress && state.cycleActive)
+        {
+         ulong profSLStart = GetMicrosecondCount();
          ProcessSLManager(state);
+         ProfilerRecord(PROF_FAST_SL_MANAGER, profSLStart);
+        }
 
       SchedulerRecordTierWork(TIER_FAST, tierStart);
      }
@@ -539,7 +585,9 @@ void ExecuteMediumTasks(ulong frameStartUs, ulong budgetUs, ulong nowMs, GridSta
 
    ulong tierStart = GetMicrosecondCount();
 
+   ulong profSessionStart = GetMicrosecondCount();
    ProcessSessionTask(nowMs, state);
+   ProfilerRecord(PROF_SESSION_TASK, profSessionStart);
    if(!SchedulerBudgetAvailable(frameStartUs, budgetUs))
      {
       SchedulerRecordTierWork(TIER_MEDIUM, tierStart);
@@ -582,12 +630,17 @@ void ExecuteMediumTasks(ulong frameStartUs, ulong budgetUs, ulong nowMs, GridSta
    // scheduler.
    if(!state.cleanupInProgress)
      {
+      ulong profBuildStart = GetMicrosecondCount();
       CheckAndBuildGrid(state);
+      ProfilerRecord(PROF_MEDIUM_CHECK_BUILD_GRID, profBuildStart);
 
       if(state.needsGridVerification)
         {
          state.needsGridVerification = false;
-         if(!VerifyFreshGrid(state))
+         ulong profVerifyStart = GetMicrosecondCount();
+         bool freshGridOK = VerifyFreshGrid(state);
+         ProfilerRecord(PROF_MEDIUM_VERIFY_FRESH_GRID, profVerifyStart);
+         if(!freshGridOK)
            {
             LogDebug("[Coordinator] Fresh grid failed verification — resetting.");
             TriggerSafetyStop(state, "GRID_VERIFICATION_FAILED");
@@ -599,13 +652,17 @@ void ExecuteMediumTasks(ulong frameStartUs, ulong budgetUs, ulong nowMs, GridSta
 
       if(!state.cleanupInProgress && state.outsideRefillPending)
         {
+         ulong profRefillStart = GetMicrosecondCount();
          RefillOutside(state);
+         ProfilerRecord(PROF_MEDIUM_REFILL_OUTSIDE, profRefillStart);
          state.outsideRefillPending = false;
         }
 
       if(!state.cleanupInProgress && state.refillNeeded)
         {
+         ulong profMaintenanceStart = GetMicrosecondCount();
          ProcessInsideMaintenance(state);
+         ProfilerRecord(PROF_MEDIUM_INSIDE_MAINTENANCE, profMaintenanceStart);
          state.refillNeeded = false;
         }
      }
@@ -623,7 +680,11 @@ void ExecuteSlowTasks(ulong frameStartUs, ulong budgetUs, ulong nowMs, GridState
 
    ulong tierStart = GetMicrosecondCount();
    if(InpShowDashboard)
+     {
+      ulong profDashboardStart = GetMicrosecondCount();
       UpdateDashboard(state);
+      ProfilerRecord(PROF_DASHBOARD_UPDATE, profDashboardStart);
+     }
    // Dashboard/statistics remain here rather than in the high-frequency path.
    SchedulerRecordTierWork(TIER_SLOW, tierStart);
   }
@@ -648,6 +709,7 @@ void ExecuteBackgroundTasks(ulong frameStartUs, ulong budgetUs, ulong nowMs, Gri
    if(!SchedulerTierDue(nowMs, g_lastBackgroundMs, (ulong)InpBackgroundTierIntervalMs)) return;
 
    ulong tierStart = GetMicrosecondCount();
+   ulong profBackgroundStart = tierStart;
 
    if(state.safetyAlertPending &&
       !state.safetyStopPending &&
@@ -666,6 +728,7 @@ void ExecuteBackgroundTasks(ulong frameStartUs, ulong budgetUs, ulong nowMs, Gri
       state.safetyStopReason   = "";
      }
 
+   ProfilerRecord(PROF_BACKGROUND_TASKS, profBackgroundStart);
    SchedulerRecordTierWork(TIER_SLOW, tierStart);
 }
 //+------------------------------------------------------------------+
@@ -691,6 +754,7 @@ void InitSchedulerRuntime()
    g_totalFrameWorkUs = 0;
    for(int i = 0; i < 5; i++)
       g_lastTierWorkUs[i] = 0;
+   ProfilerResetAll();
    g_profileStartUs  = GetMicrosecondCount();
    g_lastCpuReportMs = now;
 
@@ -818,7 +882,9 @@ void RunScheduler(GridState &state)
    {
       ulong tierStart = GetMicrosecondCount();
 
+      ulong profTxStart = GetMicrosecondCount();
       ProcessTransactionQueue(frameStartUs, budgetUs, state);
+      ProfilerRecord(PROF_PROCESS_TRANSACTION_QUEUE, profTxStart);
 
       SchedulerRecordTierWork(TIER_TRANSACTIONS, tierStart);
    }
@@ -860,7 +926,9 @@ void RunScheduler(GridState &state)
       g_lastCleanupMs = nowMs;
       ulong tierStart = GetMicrosecondCount();
 
+      ulong profCleanupStart = GetMicrosecondCount();
       ProcessCleanupWork(frameStartUs, budgetUs, state);
+      ProfilerRecord(PROF_PROCESS_CLEANUP_WORK, profCleanupStart);
 
       SchedulerRecordTierWork(TIER_CLEANUP, tierStart);
    }
@@ -872,7 +940,9 @@ void RunScheduler(GridState &state)
    }
 
    // 3) Fast tier.
+   ulong profFastStart = GetMicrosecondCount();
    ExecuteFastTasks(frameStartUs, budgetUs, nowMs, state);
+   ProfilerRecord(PROF_EXECUTE_FAST_TASKS, profFastStart);
 
    if(!SchedulerBudgetAvailable(frameStartUs, budgetUs))
    {
@@ -881,7 +951,9 @@ void RunScheduler(GridState &state)
    }
 
    // 4) Medium tier.
+   ulong profMediumStart = GetMicrosecondCount();
    ExecuteMediumTasks(frameStartUs, budgetUs, nowMs, state);
+   ProfilerRecord(PROF_EXECUTE_MEDIUM_TASKS, profMediumStart);
 
    if(!SchedulerBudgetAvailable(frameStartUs, budgetUs))
    {

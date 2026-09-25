@@ -1,0 +1,23 @@
+HedgeGrid EA Rev 30.01
+
+Active code:
+- HedgeGrid.mq5
+- Inputs.mqh
+- Models/GridState.mqh
+- Models/TransactionItem.mqh
+- Utils/Identity.mqh
+- Utils/TradeBook.mqh
+- Utils/AsyncTrade.mqh
+- Engines/StrategyBridge.mqh
+- Engines/TransactionHandler.mqh
+- Engines/ReconcileEngine.mqh
+- Engines/CleanupEngine.mqh
+- Engines/Scheduler.mqh
+
+Reference strategy source:
+- Reference_Rev22_2/*
+- copied from user upload: 314a64eb-6728-40d4-999a-5f50737dd21c.zip
+- source .mq5/.mqh/.md/.txt files are byte-identical to the upload
+- original ZIP SHA-256: 6538bc18cc35d645f8b75e1bb90071e2aaf192859ded6eac187c2cd2cc69f833
+
+No EX5 binary is included in Rev 30.01.
