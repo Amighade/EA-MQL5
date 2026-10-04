@@ -1,0 +1,51 @@
+HedgeGrid EA Rev31.00 — opt-in grid cleanup integration test
+Based on the reviewed Rev30.04 async infrastructure. Native MT5 compilation is not included.
+
+ACTIVE SOURCE (compile HedgeGrid.mq5 only)
+Engines/CleanupEngine.mqh
+Engines/ReconcileEngine.mqh
+Engines/Scheduler.mqh
+Engines/StrategyBridge.mqh
+Engines/TransactionHandler.mqh
+HedgeGrid.mq5
+Inputs.mqh
+Models/GridState.mqh
+Models/TransactionItem.mqh
+Utils/AsyncTrade.mqh
+Utils/Identity.mqh
+Utils/ProfilerUtils.mqh
+Utils/TradeBook.mqh
+
+VALIDATION
+Validation/build_harness.py
+Validation/lifecycle_tests.cpp
+Validation/race_tests.cpp
+Validation/broker_stress.cpp
+Validation/results.txt
+
+READING / AUDIT
+README_REV31_00.md
+CHANGELOG_REV31_00.md
+AUDIT_REV30_04.md (historical infrastructure audit)
+SIMULATION_REV30_04.md (historical baseline simulation)
+HedgeGrid_Action_Flow_Reference_30_04.mq5 (comment-only companion)
+
+EXCLUDED FROM ACTIVE EA
+Reference_Rev22_2/ (historical source)
+
+No active EX5 is supplied. Enable InpRunGridCleanupTest only in Strategy Tester or on demo.
+
+SHA-256 ACTIVE SOURCE
+7749fce806d58104a0d93b03f4ae9c269e229dc14574c743f26a5da74a25cdc2  Engines/CleanupEngine.mqh
+2af73b7b0ad0541764f3f4bee98ddd73627dbbce41ae2de27ced33f47c7b6a92  Engines/ReconcileEngine.mqh
+5efa9658d07edb57d0a8060e718f3081a8bda1c009eb6f49e6f6ebf601b5a613  Engines/Scheduler.mqh
+2ea4c8a4257b31acfa1948ba26874812b0d90dbbdbb2924b303bffbefe3e0c17  Engines/StrategyBridge.mqh
+9dbc6f25ef58d0627ae2fc3643e452d82647a720e78ae0f7591ef88d69d6fadc  Engines/TransactionHandler.mqh
+f82a5012be918e2f7f69a44b65f0ba5dd21b12f699cf0c43ffc3dc366b612cbb  HedgeGrid.mq5
+a75f7fb0f84e7ec56d339fa6899354c30f5f5a4efeec28a0b9427ab772e042de  Inputs.mqh
+1d45ed59269ba2999690652cf0b0be5079732ecd0302a3876986fdbafb7c1b7f  Models/GridState.mqh
+019c8b13702d20c88e892853ec289fcdbae6453e96fc4ffafccb1db910ea2176  Models/TransactionItem.mqh
+496f5fe154d40f511bd71dd6be12c6b5781a21c58966ca54fd36228a0636daf7  Utils/AsyncTrade.mqh
+0b1b1dfaedb5ef9fc4eee9a627befd7d39b227881a081ae9ba7e092b59df03ed  Utils/Identity.mqh
+f7eb7ef9d54eec3b08db91bbfe5ca44aa93d95eddbfc28633ae1b675ae11dd78  Utils/ProfilerUtils.mqh
+1a5f1ae00ae3f17edaee90b4ef4200ac1d308242c80fd43024153120ba530ff0  Utils/TradeBook.mqh

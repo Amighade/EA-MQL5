@@ -1,0 +1,9 @@
+HedgeGrid EA Rev31.02 — Rev22.2 strategy with bounded asynchronous requests
+
+Active source: HedgeGrid.mq5
+Strategy: Engines/StrategyBridge.mqh, Engines/StrategyGrid.mqh, Engines/StrategyProtection.mqh
+Async infrastructure: Utils/AsyncTrade.mqh, Engines/TransactionHandler.mqh, Engines/ReconcileEngine.mqh, Engines/CleanupEngine.mqh
+Initial-grid failure recovery: StrategyVerifyInitialGrid() -> cycle cleanup -> broker zero/zero -> full rebuild
+Request cap: InpCleanupAsyncBatch (default 3), applied to all async actions
+
+The original Rev22.2 source is retained under Reference_Rev22_2/ for comparison and is not included by the active EA.

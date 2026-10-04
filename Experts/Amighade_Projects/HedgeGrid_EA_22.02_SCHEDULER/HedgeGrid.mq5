@@ -16,7 +16,7 @@
 //|     never immediately on session start.                            |
 //+------------------------------------------------------------------+
 #property copyright "HedgeGrid EA"
-#property version   "22.00"
+#property version   "22.02"
 #property strict
 
 #include "Inputs.mqh"

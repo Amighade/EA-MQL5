@@ -16,7 +16,7 @@
 //|     never immediately on session start.                            |
 //+------------------------------------------------------------------+
 #property copyright "HedgeGrid EA"
-#property version   "10.00"
+#property version   "20.00"
 #property strict
 
 #include "Inputs.mqh"
@@ -35,10 +35,8 @@
 #include "Engines/GridBuilder.mqh"
 #include "Engines/OrderMonitor.mqh"
 #include "Engines/GridUpdater.mqh"
-#include "Engines/ShiftingEngine.mqh"
 #include "Engines/SLManager.mqh"
 #include "Engines/CleanupReset.mqh"
-#include "Engines/Recentering.mqh"
 #include "Engines/TimerEngine.mqh"
 #include "Dashboard/ChartPanel.mqh"
 #include "Utils/StatePersistence.mqh"
@@ -199,94 +197,6 @@ void OnTick()
     // If you need tracking parameters like latest bid/ask, copy them to a global struct here.
 }
 
-void OnTick_old()
-{
-   bool prevSession = g_state.sessionAllowed;
-   g_state.sessionAllowed = IsSessionAllowed();
-
-   // ------------------------------------------------------------
-   // Reconciliation: recognize known-stuck shapes and delegate to
-   // the one real owner for each — never hand-write the fields here.
-   // ------------------------------------------------------------
-
-   // Cleanup never got the transaction that should have kicked it off.
-   if(g_state.cleanupInProgress && CountPositions(g_state.magicNumber) == 0)
-     {
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done)
-        {
-         ResetSLManager(g_state);
-         if(g_state.refillNeeded)
-           {
-            ProcessInsideMaintenance(g_state);
-            g_state.refillNeeded = false;
-           }
-        }
-     }
-  
-   // Phantom grid: state believes a grid exists, broker has nothing.
-   if(g_state.gridPlaced && !g_state.cleanupInProgress &&
-      CountPositions(g_state.magicNumber) == 0 &&
-      CountOrders(g_state.magicNumber) == 0)
-     {
-      ResetGridBuilder(g_state);
-     }
-   
-   // Orphaned wall: armed but nothing left for it to watch.
-   if(g_state.slWallArmed && !g_state.cycleActive)
-     {
-      ResetSLManager(g_state);
-     }
-        
-   if(!prevSession && g_state.sessionAllowed)
-      LogSessionChange(true, GetActiveSessionName());
-   if(prevSession && !g_state.sessionAllowed)
-      LogSessionChange(false, "Session ended");
-      
-   // (Unstick already handled above for the cleanupInProgress + no positions case)
-  
-   CalculateBasketProfits(g_state);
-
-   // Closing always outranks opening/modifying — nothing else runs while
-   // a cleanup sequence is in progress (it progresses via confirmations
-   // in OnTradeTransaction, not per-tick).
-   if(g_state.cleanupInProgress) return;
-
-   if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE && IsNewBar(g_state.lastBarGridFirstSL) &&
-      g_state.gridPlaced && !g_state.cycleActive)   // gridPlaced but nothing's filled yet
-     {
-      DeleteAllOrders(g_state.magicNumber);
-      ResetGridBuilder(g_state);   // clears gridPlaced, anchors, etc. — next CheckAndBuildGrid call rebuilds fresh
-     }
-   // the ONLY place a grid is ever built.
-   CheckAndBuildGrid(g_state);
-
-   if(g_state.needsGridVerification)
-     {
-      g_state.needsGridVerification = false;   // check runs exactly once, regardless of outcome
-   
-      if(!VerifyFreshGrid(g_state))
-        {
-         LogDebug("[Coordinator] Fresh grid failed verification — resetting.");
-         TriggerSafetyStop(g_state, "GRID_VERIFICATION_FAILED");
-        }
-     }
-
-   // recenter (fresh grid only)
-   if(ProcessRecentering(g_state))
-      BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), g_state);
-
-   // continuous SL arm/trail check
-   if(g_state.cycleActive)
-      ProcessSLManager(g_state);
-   
-   if(g_state.outsideRefillPending)
-     {
-      RefillOutside(g_state);
-      g_state.outsideRefillPending = false;
-     }
-}
-
 //+------------------------------------------------------------------+
 //| OnTradeTransaction                                                |
 //| Bug fixes applied:                                                 |
@@ -317,118 +227,6 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
         g_state.g_txQueue[size] = element;
         g_state.g_txDirty = true; // Signal the Game Loop
     }
-}
-
-void OnTradeTransaction_old(const MqlTradeTransaction &trans,
-                        const MqlTradeRequest     &request,
-                        const MqlTradeResult      &result)
-{
-   // Bug fix #3: only DEAL_ADD is relevant — DEAL_UPDATE/DEAL_DELETE never
-   // fire for normal trade activity, and TRADE_TRANSACTION_POSITION does
-   // not carry deal history (needed for the #2 fix), so it is dropped too.
-   if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
-   if(trans.symbol != _Symbol) return;
-   if(trans.deal_type != DEAL_TYPE_BUY && trans.deal_type != DEAL_TYPE_SELL) return;
-
-   // MqlTradeTransaction has no deal_entry field directly — it must be
-   // read from deal history via the deal ticket (trans.deal).
-   if(!HistoryDealSelect(trans.deal)) return;
-   ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
-
-   // ------------------------------------------------------------
-   // CLEANUP IN PROGRESS — close one position per confirmation.
-   // Closing always outranks opening: nothing else runs here.
-   // ------------------------------------------------------------
-   if(g_state.cleanupInProgress)
-     {
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done)
-        {
-         ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
-         if(g_state.refillNeeded)
-           {
-            ProcessInsideMaintenance(g_state);
-            g_state.refillNeeded = false;
-           }
-        }
-      return;
-     }
-
-   ulong positionTicket = trans.position;
-   if(positionTicket == 0) return;
-
-   // ------------------------------------------------------------
-   // A position CLOSED (deal entry OUT / INOUT / OUT_BY).
-   // Big A/B fix: any close is treated as a cleanup trigger, unless
-   // an armed SL wall is still mid-sequence and expects more closes.
-   // ------------------------------------------------------------
-   if(dealEntry == DEAL_ENTRY_OUT ||
-      dealEntry == DEAL_ENTRY_INOUT ||
-      dealEntry == DEAL_ENTRY_OUT_BY)
-     {
-      // SL disabled, or nothing armed, or an unexpected close (manual, etc.)
-      // — Bug fix "Big A/B": there must always be a cleanup trigger.
-      StartCleanupSequence(g_state);
-      bool done = ExecuteNextCloseStep(g_state);
-      if(done)
-        {
-         ResetSLManager(g_state); // coordinator's job — CleanupReset never reaches into SLManager
-         if(g_state.refillNeeded)
-           {
-            ProcessInsideMaintenance(g_state);
-            g_state.refillNeeded = false;
-           }
-        }
-      return;
-     }
-
-   if(dealEntry != DEAL_ENTRY_IN) return; // if just A position opened
-
-   // ------------------------------------------------------------
-   // NORMAL FLOW — a new position opened.
-   // ------------------------------------------------------------
-
-   // Gap fault check (minor bug fix: expected price passed explicitly,
-   // not re-read from a possibly-gone order after the fact).
-   double currentPrice  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double expectedPrice = 0.0;
-   /*ulong  faultTicket    = CheckGapFault(currentPrice, g_state.magicNumber, expectedPrice);
-   if(faultTicket != 0)
-     {
-      g_state.gapFaultDetected = true;
-      LogGapFault(expectedPrice, currentPrice, faultTicket);
-      TriggerSafetyStop(g_state, StringFormat("GAP_FAULT ticket=%I64u expected=%.5f", faultTicket, expectedPrice));
-      return;
-     }*/
-
-   ProcessOrderFill(positionTicket, g_state);
-
-   // Re-snapshot the armed-winner set on every new fill (closes the
-   // "new fill mid-epoch" gap — confirmed: re-snapshot every time).
-   ReSnapshotIfArmed(g_state);
-
-   // Brick 1 / Brick 2 — each is a no-op internally if its toggle is off.
-   UpdateOppositeGrid(g_state);
-   ShiftGrid(g_state);
-
-   ProcessInsideStrategy(g_state);
-      
-   // was: RefillOutside(g_state);
-   g_state.outsideRefillPending = true;
-
-   // Brick 6 — check immediately after a fill too (not just OnTick),
-   // so a newly-profitable basket doesn't wait for the next tick to arm.
-   ProcessSLManager(g_state);
-
-   LogHistory("ORDER_FILL",
-              g_state.lastHitPrice,
-              g_state.lastHitDirection==ORDER_TYPE_BUY?"BUY":"SELL",
-              g_state.lastHitLot,
-              g_state.passCounter,
-              g_state.currentBlockLot,
-              g_state.basketProfit,
-              g_state.sessionAllowed,
-              AccountInfoDouble(ACCOUNT_MARGIN_FREE));
 }
 
 //+------------------------------------------------------------------+
@@ -473,14 +271,6 @@ void OnTimer()
         g_state.g_lastTime_60000ms = currentTick;
         ExecuteBackgroundTasks(); 
     }
-}
-
-void OnTimer_old()
-{
-   UpdateDashboard(g_state);
-
-   //if(newMode != g_state.lotMode && !g_state.cycleActive)
-   //   g_state.lotMode = newMode;
 }
 
 //+------------------------------------------------------------------+

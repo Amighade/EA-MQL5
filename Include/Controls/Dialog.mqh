@@ -487,11 +487,11 @@ bool CAppDialog::Create(const long chart,const string name,const int subwin,cons
      {
       case PROGRAM_EXPERT:
          if(!CreateExpert(x1,y1,x2,y2))
-         return(false);
+            return(false);
          break;
       case PROGRAM_INDICATOR:
          if(!CreateIndicator(x1,y1,x2,y2))
-         return(false);
+            return(false);
          break;
       default:
          Print("CAppDialog: invalid program type");
@@ -508,6 +508,8 @@ bool CAppDialog::Create(const long chart,const string name,const int subwin,cons
 //--- if flag is set, minimize the dialog
    if(m_minimized)
       Minimize();
+   else
+      Maximize();
 //--- succeed
    return(true);
   }
@@ -757,7 +759,6 @@ void CAppDialog::ChartEvent(const int id,const long &lparam,const double &dparam
         }
       //--- get subwindow offset
       SubwinOff();
-      return;
      }
   }
 //+------------------------------------------------------------------+
@@ -908,7 +909,6 @@ string CAppDialog::IniFileName(void) const
    string name;
 //---
    name=(m_indicator_name!=NULL) ? m_indicator_name : m_program_name;
-//---
    name+="_"+Symbol();
    name+="_Ini";
 //---

@@ -7,7 +7,7 @@
 #include "CheckBox.mqh"
 #include <Arrays\ArrayString.mqh>
 #include <Arrays\ArrayLong.mqh>
-#include <Arrays\ArrayInt.mqh>
+#include <Arrays\ArrayUChar.mqh>
 //+------------------------------------------------------------------+
 //| Class CCheckGroup                                                |
 //| Usage: view and edit group of flags                              |
@@ -24,7 +24,7 @@ private:
    //--- data
    CArrayString      m_strings;             // array of rows
    CArrayLong        m_values;              // array of values
-   CArrayInt         m_states;              // array of states
+   CArrayUChar       m_states;              // array of states ON/OFF
    long              m_value;               // current value
    int               m_current;             // index of current row in array of rows
 
@@ -41,8 +41,8 @@ public:
    //--- data
    long              Value(void) const;
    bool              Value(const long value);
-   int               Check(const int idx) const;
-   bool              Check(const int idx,const int value);
+   bool              Check(const int idx) const;
+   bool              Check(const int idx,const long value);
    //--- state
    virtual bool      Show(void);
    //--- methods for working with files
@@ -198,32 +198,27 @@ bool CCheckGroup::Value(const long value)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-int CCheckGroup::Check(const int idx) const
-  {
-//--- check
-   if(idx>=m_values.Total())
-      return(0);
-//---
-   return(m_states[idx]);
-  }
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-bool CCheckGroup::Check(const int idx,const int value)
+bool CCheckGroup::Check(const int idx) const
   {
 //--- check
    if(idx>=m_values.Total())
       return(false);
 //---
-   bool res=(m_states.Update(idx,value) && Redraw());
+   return(m_states[idx]!=0);
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool CCheckGroup::Check(const int idx,const long value)
+  {
+//--- check
+   if(idx>=m_values.Total())
+      return(false);
+//---
+   uchar state=(value==0) ? 0 : 1;
+   bool  res=(m_states.Update(idx,state) && Redraw());
 //--- change value
-   if(res && idx<64)
-     {
-      if(m_rows[idx].Checked())
-         Value(m_value|m_values.At(idx));
-      else
-         Value(m_value&(~m_values.At(idx)));
-     }
+   m_value|=value;
 //---
    return(res);
   }
@@ -251,7 +246,7 @@ bool CCheckGroup::Save(const int file_handle)
    if(file_handle==INVALID_HANDLE)
       return(false);
 //---
-   FileWriteLong(file_handle,Value());
+   FileWriteLong(file_handle,m_value);
 //--- succeed
    return(true);
   }
@@ -265,7 +260,7 @@ bool CCheckGroup::Load(const int file_handle)
       return(false);
 //---
    if(!FileIsEnding(file_handle))
-      Value(FileReadLong(file_handle));
+      m_value=FileReadLong(file_handle);
 //--- succeed
    return(true);
   }
@@ -364,10 +359,11 @@ bool CCheckGroup::OnChangeItem(const int row_index)
    m_states.Update(row_index+m_offset,m_rows[row_index].Checked());
    if(row_index+m_offset<64)
      {
+      long value=m_values.At(row_index+m_offset);
       if(m_rows[row_index].Checked())
-         Value(m_value|m_values.At(row_index+m_offset));
+         m_value|=value;
       else
-         Value(m_value&(~m_values.At(row_index+m_offset)));
+         m_value&=~value;
      }
 //--- send notification
    EventChartCustom(CONTROLS_SELF_MESSAGE,ON_CHANGE,m_id,0.0,m_name);

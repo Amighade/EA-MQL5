@@ -1,0 +1,50 @@
+Rev31.00 grid cleanup test simulation — 2026-09-28
+
+PASS grid cleanup test queues both sides and cleanup closes/deletes after first fill
+
+PASS request guards preserve every command parameter in both waiting states
+PASS all six REQUEST/ORDER/DEAL arrival permutations map one full fill
+PASS request acknowledgement is not completion and never consumes the deal
+PASS partial entry keeps remainder and position; final fill preserves in-flight SL
+PASS lost result and absent PLACE remain locked through timeouts and cleanup
+PASS cleanup retries definitive close rejection and resolves disappearance
+PASS partial close requires execution history and matching live volume
+PASS replace/fill race does not submit an unintended replacement
+PASS replacement requires cancellation history and starts with clean action state
+PASS plain DELETE clears an unsent replacement
+PASS failed live positions are counted and absent failed items are removed
+PASS broker scan excludes other owners, symbols and transient market orders
+PASS late exact result merges recovered position with original waiting PLACE
+PASS broker ticket change retains one position and its pending command
+PASS retry exhaustion requests recovery without forging identity or cleanup
+PASS cleanup catches late objects, discards plans and enforces three in-flight requests
+PASS disconnected snapshots cannot finish cleanup or send trades
+PASS absence removes stable items without starting cycle cleanup; pause survives reset
+PASS snapshot adopts missed events with no synthetic strategy commands
+PASS reverse send traversal handles adjacent already-absent targets
+PASS registered but unaccepted pending order does not unlock PLACE
+PASS filled order with delayed position visibility cannot finish cleanup
+PASS rapid open then close is resolved by position history without phantom item
+PASS startup rejects invalid scheduling and incompatible account modes
+PASS shared budget stops submissions and queue frame cap is honored
+PASS canceling a partially filled remainder preserves the requested replacement
+PASS replacement still follows an expired unfilled old order
+28 scenario groups passed
+
+PASS stable and deleting orders cannot hide fills behind an empty position snapshot
+PASS successful CLOSE with an offsetting entry fill closes the remaining exposure
+PASS partial CLOSE does not resend while its execution order remains live
+PASS same-price broker object never confirms an unrelated outstanding PLACE
+PASS late exact PLACE result merges metadata without overwriting live DELETE
+PASS missing PLACE result remains locked and a late rejection releases cleanup
+PASS old flat history cannot conceal a newly filled remainder
+PASS canceled partial remainder waits for its filled position before replacement
+8 race scenario groups passed
+
+PASS broker stress seeds 1..2000
+completed=2000 frames=842414 submissions=422586 executions=411174 broker_rejections=67392 local_failures=11412
+entries=76757 partial_entries=25963 exits=85035 partial_closes=17440 callbacks=911226 dropped_facts=40348 disconnects=5071
+
+Static checks: all 13 active includes resolve; one OrderSendAsync call; no synchronous trading calls.
+The opt-in test uses the existing fast strategy hook, request setters, transaction handler, reconciliation and cleanup path.
+Native MetaEditor compilation and MT5 execution: NOT PERFORMED.

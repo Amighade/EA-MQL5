@@ -1,0 +1,48 @@
+HedgeGrid EA Rev30.04 — two-way simulation review, 2026-09-26
+
+13 active files. No new active functions or state machines. Two CLOSE result identifiers added to TradeItem.
+27 lifecycle groups + 8 focused race groups + 2,000 seeded broker runs. Native MetaEditor/MT5 verification pending.
+
+ACTIVE SOURCE (compile HedgeGrid.mq5 only)
+Engines/CleanupEngine.mqh
+Engines/ReconcileEngine.mqh
+Engines/Scheduler.mqh
+Engines/StrategyBridge.mqh
+Engines/TransactionHandler.mqh
+HedgeGrid.mq5
+Inputs.mqh
+Models/GridState.mqh
+Models/TransactionItem.mqh
+Utils/AsyncTrade.mqh
+Utils/Identity.mqh
+Utils/ProfilerUtils.mqh
+Utils/TradeBook.mqh
+
+READING / AUDIT
+README_REV30_04.md
+AUDIT_REV30_04.md
+CHANGELOG_REV30_04.md
+SIMULATION_REV30_04.md
+HedgeGrid_Action_Flow_Reference_30_04.mq5 (comment-only companion)
+
+EXCLUDED FROM ACTIVE EA
+Validation/ — simulator source, reproducible commands and results
+Reference_Rev22_2/ — unchanged historical source and OLD binary
+CHANGELOG_REV30_01.md, CHANGELOG_REV30_02.md, CHANGELOG_REV30_03.md — historical notes
+
+No active Rev30.04 EX5 is supplied.
+
+SHA-256 ACTIVE SOURCE
+7749fce806d58104a0d93b03f4ae9c269e229dc14574c743f26a5da74a25cdc2  Engines/CleanupEngine.mqh
+4c2bd0b872c8ed66ef67cf5db0db8899a57880b23ce8bd9787ee150da992ecd0  Engines/ReconcileEngine.mqh
+08331e6b0a7e7d1fda38ce8fc0ac12fcc89aa1e2bc200d56e2190ca3e4873995  Engines/Scheduler.mqh
+bc172c3d39aaa3b768b2143dbbfe7b84b3d2655e39963a3d03a902a11fd97208  Engines/StrategyBridge.mqh
+3b4122819b120719abd20e1d2c7615ee9dea0850763f9043fa0281080e818716  Engines/TransactionHandler.mqh
+4fcca7740515d62e374efa64689bb408254dcc552f5f439d96e65b319423267a  HedgeGrid.mq5
+bb35593df7ba52e9b1a6598dabbf7f470af694004ec4600198218f92d1f20d08  Inputs.mqh
+1d45ed59269ba2999690652cf0b0be5079732ecd0302a3876986fdbafb7c1b7f  Models/GridState.mqh
+019c8b13702d20c88e892853ec289fcdbae6453e96fc4ffafccb1db910ea2176  Models/TransactionItem.mqh
+496f5fe154d40f511bd71dd6be12c6b5781a21c58966ca54fd36228a0636daf7  Utils/AsyncTrade.mqh
+0b1b1dfaedb5ef9fc4eee9a627befd7d39b227881a081ae9ba7e092b59df03ed  Utils/Identity.mqh
+86ced0e2d051f229dfb092bff0d90a2485942caf2412ad48b42d2bd42e8547c7  Utils/ProfilerUtils.mqh
+441ecd852a3d7b701e634ee91a0a63efbaea3fb816b2998fa2650a8eae6a804d  Utils/TradeBook.mqh

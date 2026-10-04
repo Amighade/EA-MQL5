@@ -1,0 +1,24 @@
+Rev31.02 strategy integration — simulated validation
+
+Harness: 16 active MQL source files translated to C++17 with include/input/array syntax adaptation.
+Compiler flags used for this run: -O1 -D_GLIBCXX_ASSERTIONS
+
+Lifecycle scenarios: 27 passed
+Broker-event race scenarios: 8 passed
+Strategy integration scenarios: 4 passed
+
+Broker stress seeds: 1..2000 passed
+Frames: 789540
+Submissions: 197599
+Executions: 168828
+Broker rejections: 25524
+Local send failures: 28771
+Entries: 45556 (partial entries: 15391)
+Exits: 48227 (partial closes: 9983)
+Callbacks: 405590
+Dropped callback facts: 18979
+Disconnects: 4799
+
+Strategy tests verified a three-request in-flight cap, waiting for the first batch to be confirmed before sending the rest, PLACE intents, incomplete-grid cleanup/retry, broker zero positions plus zero orders before rebuilding, cleanup after synchronization removes a fully closed position item, and the SL_FIRST_GRID non-negative basket check. The randomized broker stress harness runs with strategy automation paused and exercises the broker/infrastructure path.
+
+No native MetaEditor compilation, EX5 generation, or MT5 demo/tester run is included.

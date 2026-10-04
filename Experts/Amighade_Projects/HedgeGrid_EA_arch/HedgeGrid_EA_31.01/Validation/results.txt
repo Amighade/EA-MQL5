@@ -1,0 +1,24 @@
+Rev31.00 strategy integration — simulated validation
+
+Harness: 16 active MQL source files translated to C++17 with include/input/array syntax adaptation.
+Compiler flags: -O1 -D_GLIBCXX_ASSERTIONS -fsanitize=undefined -fno-sanitize=enum -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
+
+Lifecycle scenarios: 27 passed
+Broker-event race scenarios: 8 passed
+Strategy integration scenarios: 4 passed
+
+Broker stress seeds: 1..2000 passed
+Frames: 742162
+Submissions: 268873
+Executions: 258415
+Broker rejections: 43769
+Local send failures: 10458
+Entries: 47974 (partial entries: 16155)
+Exits: 54186 (partial closes: 11153)
+Callbacks: 570093
+Dropped callback facts: 25359
+Disconnects: 5003
+
+Strategy tests verified PLACE intents and asynchronous submission; an incomplete initial grid entering cleanup while still BUILDING, retrying a rejected cancel, waiting for accepted cancels and broker zero positions plus zero orders, then rebuilding the whole grid; cleanup after synchronization removes a fully closed position item; and the SL_FIRST_GRID non-negative basket check. The randomized broker stress harness runs with strategy automation paused and exercises the broker/infrastructure path.
+
+No native MetaEditor compilation, EX5 generation, or MT5 demo/tester run is included.

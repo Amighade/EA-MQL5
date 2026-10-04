@@ -1,0 +1,27 @@
+HedgeGrid EA Rev 30.02
+
+ACTIVE SOURCE
+HedgeGrid.mq5
+Inputs.mqh
+Models/GridState.mqh
+Models/TransactionItem.mqh
+Engines/TransactionHandler.mqh
+Engines/Scheduler.mqh
+Engines/CleanupEngine.mqh
+Engines/StrategyBridge.mqh
+Engines/ReconcileEngine.mqh
+Utils/AsyncTrade.mqh
+Utils/TradeBook.mqh
+Utils/Identity.mqh
+Utils/ProfilerUtils.mqh
+
+DOCUMENTATION / REVIEW
+README_REV30_02.md
+CHANGELOG_REV30_02.md
+CHANGELOG_REV30_01.md  -- previous revision history
+HedgeGrid_Action_Flow_Reference_30_02.mq5  -- documentation/reference only; not included by HedgeGrid.mq5
+
+REFERENCE ONLY
+Reference_Rev22_2/  -- exact Rev 22.2 strategy reference; not compiled into Rev 30.02
+
+No EX5 binary is included in Rev 30.02.
