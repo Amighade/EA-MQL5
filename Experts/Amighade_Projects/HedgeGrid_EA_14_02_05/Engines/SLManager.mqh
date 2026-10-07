@@ -278,11 +278,13 @@ void ProcessSLManager(GridState &state)
                                       POSITION_TYPE_BUY : POSITION_TYPE_SELL;
    double price = (candidateSide == POSITION_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
                                                         : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   
-   double net = NetBasketAtCandidate(state, candidateSide, price);
-      
+                                                        
+   double net = state.basketNetProfit;                                                     
+   NetBasketAtCandidate(state, candidateSide, price);                                                     
+   if (InpRunawayN > 0 && state.passCounter >= (InpRunawayN-1)) net = state.basketProfit;
+
    if(net <= 0) return;
-   Print("------>net: ",net);
+
    ArmSL(state);
 }
 #endif

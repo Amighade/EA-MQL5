@@ -15,24 +15,34 @@
 // applied one price to every position regardless of side, which was
 // wrong for the loser side (it doesn't close at the winner's SL).
 //====================================================
-double NetBasketAtCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide, double candidate)
+void NetBasketAtCandidate(GridState &state,
+                          ENUM_POSITION_TYPE winnerSide,
+                          double candidate)
 {
-   ENUM_POSITION_TYPE loserSide = (winnerSide == POSITION_TYPE_BUY) ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+   ENUM_POSITION_TYPE loserSide =
+      (winnerSide == POSITION_TYPE_BUY) ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
 
-   double winVol   = (winnerSide == POSITION_TYPE_BUY) ? state.buyVolume   : state.sellVolume;
-   double winEntry = (winnerSide == POSITION_TYPE_BUY) ? state.buyAvgEntry : state.sellAvgEntry;
-   double loseVol   = (loserSide == POSITION_TYPE_BUY) ? state.buyVolume   : state.sellVolume;
-   double loseEntry = (loserSide == POSITION_TYPE_BUY) ? state.buyAvgEntry : state.sellAvgEntry;
+   double winVol    = (winnerSide == POSITION_TYPE_BUY) ? state.buyVolume   : state.sellVolume;
+   double winEntry  = (winnerSide == POSITION_TYPE_BUY) ? state.buyAvgEntry : state.sellAvgEntry;
+   double loseVol   = (loserSide  == POSITION_TYPE_BUY) ? state.buyVolume   : state.sellVolume;
+   double loseEntry = (loserSide  == POSITION_TYPE_BUY) ? state.buyAvgEntry : state.sellAvgEntry;
 
-   double net = SideProfitAtPrice(winnerSide, winVol, winEntry, candidate);
+   double spread = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double loserPrice = (loserSide == POSITION_TYPE_BUY)
+                       ? candidate - spread
+                       : candidate + spread;
 
-   if(loseVol > 0)
-     {
-      double loserPrice = (loserSide == POSITION_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
-                                                            : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      net += SideProfitAtPrice(loserSide, loseVol, loseEntry, loserPrice);
-     }
-   return net;
+   double profitWinner = SideProfitAtPrice(winnerSide, winVol, winEntry, candidate);
+   double profitLoser  = SideProfitAtPrice(loserSide, loseVol, loseEntry, loserPrice);
+
+   state.basketBuyProfit = (winnerSide == POSITION_TYPE_BUY)
+                           ? profitWinner : profitLoser;
+   state.basketSellProfit = (winnerSide == POSITION_TYPE_SELL)
+                            ? profitWinner : profitLoser;
+
+   state.basketProfit    = profitWinner + profitLoser;
+   state.basketNetProfit = state.basketProfit
+                           - InpCommissionPerLot * (winVol + loseVol);
 }
 
 double SideProfitAtPrice(ENUM_POSITION_TYPE side, double volume, double avgEntry, double price)
@@ -45,7 +55,7 @@ double SideProfitAtPrice(ENUM_POSITION_TYPE side, double volume, double avgEntry
    double moneyPerPrice = tickVal / tickSz;
 
    double diff = (side == POSITION_TYPE_BUY) ? (price - avgEntry) : (avgEntry - price);
-   return diff * moneyPerPrice * volume - InpCommissionPerLot * volume;
+   return diff * moneyPerPrice * volume;
 }
 //====================================================
 // GRID ANCHOR RESOLUTION (handles gaps)
@@ -96,8 +106,8 @@ double SL_SearchGridLevels(GridState &state, double anchor, ENUM_POSITION_TYPE w
       double candidate = SL_GetGridLevel(anchor, n, winnerSide);
       if(!SL_IsProgress(winnerSide, candidate, currentSL)) continue;
       if(!SL_BrokerOK(winnerSide, candidate)) continue;
-      double net = NetBasketAtCandidate(state, winnerSide, candidate);
-      if(net >= 0.0) return candidate;
+      NetBasketAtCandidate(state, winnerSide, candidate);
+      if(state.basketNetProfit >= 0.0) return candidate;
      }
    return 0;
 }
@@ -159,7 +169,8 @@ double SL_FindCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide,
       double candidate = (winnerSide == POSITION_TYPE_BUY) ? (bid - minStop) : (ask + minStop);
       if(!SL_IsProgress(winnerSide, candidate, currentSL)) return 0;
       if(!SL_BrokerOK(winnerSide, candidate)) return 0;
-      if(NetBasketAtCandidate(state, winnerSide, candidate) < 0.0) return 0;
+      NetBasketAtCandidate(state, winnerSide, candidate);
+      if(state.basketNetProfit < 0.0) return 0;
       return candidate;
      }
 
@@ -171,7 +182,8 @@ double SL_FindCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide,
       double candidate = SL_GetGridLevel(anchor, 1, winnerSide);
       if(!SL_IsProgress(winnerSide, candidate, currentSL)) return 0;
       if(!SL_BrokerOK(winnerSide, candidate)) return 0;
-      if(NetBasketAtCandidate(state, winnerSide, candidate) < 0.0) return 0;
+      NetBasketAtCandidate(state, winnerSide, candidate);
+      if(state.basketNetProfit < 0.0) return 0;
       return candidate;
      }
 
