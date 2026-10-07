@@ -335,31 +335,69 @@ void BuildGrid(double price, GridState &state)
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double spread  = ask - bid;
    double minStop = MinStopDistancePrice(_Symbol);
+   double halfGap = InpInitialGap / 2.0;
 
    if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE)
      {
       ENUM_TIMEFRAMES tf = (Timeframe == 0) ? (ENUM_TIMEFRAMES)Period() : Timeframe;
-      firstBuy  = AlignToTick(_Symbol, iHigh(_Symbol, tf, 1));
-      firstSell = AlignToTick(_Symbol, iLow(_Symbol, tf, 1));
+      double prevHigh = iHigh(_Symbol, tf, 1);
+      double prevLow  = iLow(_Symbol, tf, 1);
+      if(prevHigh <= 0.0 || prevLow <= 0.0 || prevHigh < prevLow)
+         return; // Previous-bar data unavailable; retry on a later timer pass.
+      // Check if price sits cleanly inside the prev bar range 
+      // AND maintains a safe legal distance from both outer boundaries
+      if(bid >= prevLow && ask <= prevHigh && (prevHigh - ask) >= minStop && (bid - prevLow) >= minStop)
+        {
+         // Market is stable inside the range — Use previous bar high/low lines as anchors
+         firstBuy  = AlignToTick(_Symbol, prevHigh);
+         firstSell = AlignToTick(_Symbol, prevLow);
+         LogDebug("[BuildGrid] Anchoring to stable previous bar range coordinates.");
+        }
+      else
+        {
+         // FIXED production text matching your exact conservative design strategy!
+         // Fast market breakout OR price sits too close to an edge. 
+         // Fall back to live price calculation instead of skipping the trading candle!
+         firstBuy  = AlignToTick(_Symbol, MathMax(price + halfGap, prevHigh));
+         firstSell = AlignToTick(_Symbol, MathMin(price - halfGap, prevLow));
+         LogDebug("[BuildGrid] Fast market or boundary pierce detected. Activating live-price fallback.");
+        }
      }
+
    else
      {
-      double halfGap = InpInitialGap / 2.0;
       firstBuy  = AlignToTick(_Symbol, price + halfGap);
       firstSell = AlignToTick(_Symbol, price - halfGap);
      }
 
-   // range means "prev-bar high-low" only in ANCHOR_PREV_BAR_RANGE mode.
-   // In ANCHOR_CURRENT_PRICE mode, firstBuy - firstSell is just InpInitialGap,
-   // not a volatility measure — FIRST_SL_RANGE_FRAC falls back to 0 (no SL)
-   // there rather than silently using a meaningless number.
-   double range = 0.0;
-   if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE)
-      range = firstBuy - firstSell;
-   else if(InpFirstLevelSLMode == FIRST_SL_RANGE_FRAC)
-      LogDebug("[BuildGrid] FIRST_SL_RANGE_FRAC has no meaningful range in ANCHOR_CURRENT_PRICE mode — SL skipped.");
+   if(bid <= 0.0 || ask <= 0.0 || ask < bid)
+      return;
+   
+   double tick = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   if(tick <= 0.0) tick = _Point;
+   if(tick <= 0.0) return;
+   
+   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   double pendingDistance = MinPendingDistancePrice(_Symbol);
+   
+   // Keep anchors outside the required distance; round away from market.
+   firstBuy = NormalizeDouble(
+      MathCeil(MathMax(firstBuy, ask + pendingDistance) / tick) * tick,
+      digits);
+   
+   firstSell = NormalizeDouble(
+      MathFloor(MathMin(firstSell, bid - pendingDistance) / tick) * tick,
+      digits);
+   
+   if(firstBuy <= 0.0 || firstSell <= 0.0 || firstBuy <= firstSell)
+      return;
+   
+   // Range-based SL uses the final anchor gap in either anchor mode.
+   double range = firstBuy - firstSell;
 
-   double slDist = GetFirstLevelSLDistance(range, spread, minStop);
+   double slDist = 0.0;
+   if(InpFirstLevelSLMode != FIRST_SL_NONE)
+      slDist = GetFirstLevelSLDistance(range, spread, minStop);
 
    int maxLevels = GetMaxLevels();
    for(int level = 1; level <= maxLevels; level++)
@@ -389,7 +427,6 @@ void BuildGrid(double price, GridState &state)
    state.farthestHitBuy  = 0.0;
    state.farthestHitSell = 0.0;
    LogGridBuilt(firstBuy, firstSell);
-//   state.needsGridVerification  = true;   // verified on the next medium timer pass
 }
 //+------------------------------------------------------------------+
 //| Computes the first-level SL distance from a given entry price,   |
@@ -809,28 +846,6 @@ void CheckAndBuildGrid(GridState &state)
    if(!state.sessionAllowed)             return;
    if(state.gridPlaced)                  return;
    if(state.cleanupInProgress)           return; // closing always outranks opening
-   if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE)
-     {
-      ENUM_TIMEFRAMES tf = (Timeframe == 0) ? (ENUM_TIMEFRAMES)Period() : Timeframe;
-      double prevHigh = iHigh(_Symbol, tf, 1);
-      double prevLow  = iLow(_Symbol, tf, 1);
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   
-      if(bid < prevLow || bid > prevHigh)
-         return;   // price outside prev bar's range — wait, re-check next tick
-   
-      double range   = prevHigh - prevLow;
-      double spread  = ask - bid;
-      double minStop = MinStopDistancePrice(_Symbol);
-   
-      if(range < spread + minStop)
-         return;   // range fundamentally too small for a valid grid, no matter where price sits
-   
-      if((prevHigh - ask) < minStop || (bid - prevLow) < minStop)
-         return;   // range is wide enough overall, but price sits too close to one specific edge
-     }
-
    
    if(state.marginWarning && AccountInfoDouble(ACCOUNT_MARGIN_FREE) < InpMinAllowedMargin)
      {
