@@ -343,21 +343,15 @@ void BuildGrid(double price, GridState &state)
       double prevHigh = iHigh(_Symbol, tf, 1);
       double prevLow  = iLow(_Symbol, tf, 1);
       if(prevHigh <= 0.0 || prevLow <= 0.0 || prevHigh < prevLow)
-         return; // Previous-bar data unavailable; retry on a later timer pass.
-      // Check if price sits cleanly inside the prev bar range 
-      // AND maintains a safe legal distance from both outer boundaries
+         return;
       if(bid >= prevLow && ask <= prevHigh && (prevHigh - ask) >= minStop && (bid - prevLow) >= minStop)
         {
-         // Market is stable inside the range — Use previous bar high/low lines as anchors
          firstBuy  = AlignToTick(_Symbol, prevHigh);
          firstSell = AlignToTick(_Symbol, prevLow);
          LogDebug("[BuildGrid] Anchoring to stable previous bar range coordinates.");
         }
       else
         {
-         // FIXED production text matching your exact conservative design strategy!
-         // Fast market breakout OR price sits too close to an edge. 
-         // Fall back to live price calculation instead of skipping the trading candle!
          firstBuy  = AlignToTick(_Symbol, MathMax(price + halfGap, prevHigh));
          firstSell = AlignToTick(_Symbol, MathMin(price - halfGap, prevLow));
          LogDebug("[BuildGrid] Fast market or boundary pierce detected. Activating live-price fallback.");
