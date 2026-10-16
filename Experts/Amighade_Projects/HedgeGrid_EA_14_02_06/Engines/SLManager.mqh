@@ -222,7 +222,7 @@ void TrailWall(GridState &state)
    int applied = ApplySLToWinners(slLevel, state);
    if(applied < 0) return; // safety stop already triggered
    if(applied == 0) return;
-   
+
    ulong t = g_ArmedWinnerTickets[0];
    if(!PositionSelectByTicket(t))
    {
@@ -231,7 +231,7 @@ void TrailWall(GridState &state)
    else
    {
    slLevel = PositionGetDouble(POSITION_SL);
-   
+
    state.slWallArmed  = true;
    state.slApplied    = true;
    state.slLevel      = slLevel;

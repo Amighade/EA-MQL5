@@ -63,7 +63,7 @@ void NetBasketAtCandidate_ongoing(GridState &state, double candidate,
                - InpCommissionPerLot * (state.buyVolume + state.sellVolume);
 }
 
-double SideProfitAtPrice(ENUM_POSITION_TYPE side, double volume, double avgEntry, double price)
+double SideProfitAtPrice(ENUM_POSITION_TYPE side, double volume, double avgEntry, double candidate)
 {
    if(volume <= 0) return 0.0;
 
@@ -72,7 +72,7 @@ double SideProfitAtPrice(ENUM_POSITION_TYPE side, double volume, double avgEntry
    if(tickVal <= 0 || tickSz <= 0) return -1;
    double moneyPerPrice = tickVal / tickSz;
 
-   double diff = (side == POSITION_TYPE_BUY) ? (price - avgEntry) : (avgEntry - price);
+   double diff = (side == POSITION_TYPE_BUY) ? (candidate - avgEntry) : (avgEntry - candidate);
    return diff * moneyPerPrice * volume;
 }
 
@@ -207,7 +207,7 @@ double SL_FindCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide,
    //====================================================
    if(mode == SL_P_LEVEL)
      {
-      double candidate = (winnerSide == POSITION_TYPE_BUY) ? (bid - minStop) : (ask + minStop);
+      double candidate = (winnerSide == POSITION_TYPE_BUY) ? (bid - 2*minStop) : (ask + 2*minStop);
       if(!SL_IsProgress(winnerSide, candidate, currentSL)) return 0;
       if(!SL_BrokerOK(winnerSide, candidate)) return 0;
       
