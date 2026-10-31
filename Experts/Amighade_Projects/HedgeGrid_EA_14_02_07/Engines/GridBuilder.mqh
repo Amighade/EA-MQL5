@@ -281,17 +281,6 @@ double GetHighestBuyPosition(int magicNumber, double &outLot)
 //| SHARED PLACEMENT HELPER — places a BUY/SELL pair, price-outward, |
 //| candle-direction ordered (unchanged from original implementation)|
 //+------------------------------------------------------------------+
-void PlaceOrderPair_old(double buyPrice, double buyLot,
-                    double sellPrice, double sellLot, int magicNumber, double buySl, double sellSl)
-{
-   if(IsBullishCandle())
-     { PlaceSellStop(sellPrice, sellLot, magicNumber, sellSl);
-       PlaceBuyStop(buyPrice,   buyLot,  magicNumber, buySl); }
-   else
-     { PlaceBuyStop(buyPrice,   buyLot,  magicNumber, buySl);
-       PlaceSellStop(sellPrice, sellLot, magicNumber, sellSl); }
-}
-
 bool PlaceOrderPair(double buyPrice, double buyLot,
                     double sellPrice, double sellLot,
                     int magicNumber, double buySl, double sellSl)

@@ -15,7 +15,6 @@
 //+------------------------------------------------------------------+
 #ifndef TIMER_ENGINE_MQH
 #define TIMER_ENGINE_MQH
-#include "../Utils/TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -31,6 +30,7 @@
 #include "../Engines/GridUpdater.mqh"
 #include "../Engines/SLManager.mqh"
 #include "../Engines/CleanupReset.mqh"
+#include "../Engines/RunawayGuard.mqh"
 
 struct SchedulerTransaction
   {
@@ -104,34 +104,20 @@ void RemoveQueuedTransaction()
 
 bool ProcessOneQueuedTransaction(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_PROCESSONEQUEUEDTRANSACTION);
    if(g_transactionHead >= ArraySize(g_transactionQueue))
       return false;
 
    SchedulerTransaction tx = g_transactionQueue[g_transactionHead];
 
-/*   if(!HistoryDealSelect(tx.deal))
-     {
-      g_transactionQueue[g_transactionHead].historyRetries++;
-      if(g_transactionQueue[g_transactionHead].historyRetries < 4)
-         return false;
-
-      LogDebug(StringFormat("[Scheduler] Deal history unavailable after retries. deal=%I64u",
-                            tx.deal));
-      g_reconcilePending = true;
-      RemoveQueuedTransaction();
-      return true;
-     }
-
    long dealMagic = 0;
-   if(!HistoryDealGetInteger(tx.deal, DEAL_MAGIC, dealMagic))
-      return false; // Keep queued; retry if the deal data is not available yet.
-*/
-//
-   long dealMagic = 0;
+   long entryValue = 0;
+   long positionId = 0;
 
    if(!HistoryDealSelect(tx.deal) ||
-      !HistoryDealGetInteger(tx.deal, DEAL_MAGIC, dealMagic))
+      !HistoryDealGetInteger(tx.deal, DEAL_MAGIC, dealMagic) ||
+      !HistoryDealGetInteger(tx.deal, DEAL_ENTRY, entryValue) ||
+      !HistoryDealGetInteger(tx.deal, DEAL_POSITION_ID, positionId) ||
+      positionId <= 0)
      {
       g_transactionQueue[g_transactionHead].historyRetries++;
 
@@ -146,14 +132,30 @@ bool ProcessOneQueuedTransaction(GridState &state)
       return false; // Retain the transaction until cleanup finishes.
      }
 //
-   if(dealMagic != (long)state.magicNumber)
+   ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)entryValue;
+
+   bool owned = (dealMagic == (long)state.magicNumber);
+
+   if(!owned &&
+      (dealEntry == DEAL_ENTRY_OUT ||
+       dealEntry == DEAL_ENTRY_OUT_BY ||
+       dealEntry == DEAL_ENTRY_INOUT))
+     {
+      for(int i = 0; i < ArraySize(state.ownedPositionIds); i++)
+        {
+         if(state.ownedPositionIds[i] == (ulong)positionId)
+           {
+            owned = true;
+            break;
+           }
+        }
+     }
+
+   if(!owned)
      {
       RemoveQueuedTransaction();
       return true;
      }
-
-   ENUM_DEAL_ENTRY dealEntry =
-      (ENUM_DEAL_ENTRY)HistoryDealGetInteger(tx.deal, DEAL_ENTRY);
 
    if(state.cleanupInProgress)
      {
@@ -165,15 +167,6 @@ bool ProcessOneQueuedTransaction(GridState &state)
    if(dealEntry == DEAL_ENTRY_OUT || dealEntry == DEAL_ENTRY_INOUT ||
       dealEntry == DEAL_ENTRY_OUT_BY)
      {
-      double closeLot = HistoryDealGetDouble(tx.deal, DEAL_VOLUME);
-//      UpdateSideVolumeAggregate(g_state, tx.dealtype, dealEntry, closeLot, 0.0);
-      if(!UpdateSideVolumeAggregate(state, tx.deal))
-      {
-         g_transactionQueue[g_transactionHead].historyRetries++;
-         if(g_transactionQueue[g_transactionHead].historyRetries >= 4)
-            g_transactionQueueFailed = true;
-            return false;
-      }
       StartCleanupSequence(state);
       g_cleanupAdvancePending = true;
       RemoveQueuedTransaction();
@@ -185,6 +178,30 @@ bool ProcessOneQueuedTransaction(GridState &state)
       RemoveQueuedTransaction();
       return true;
      }
+
+   bool recorded = false;
+
+   for(int i = 0; i < ArraySize(state.ownedPositionIds); i++)
+     {
+      if(state.ownedPositionIds[i] == (ulong)positionId)
+        {
+         recorded = true;
+         break;
+        }
+     }
+
+   if(!recorded)
+     {
+      int size = ArraySize(state.ownedPositionIds);
+
+      if(ArrayResize(state.ownedPositionIds, size + 1, 16) != size + 1)
+        {
+         g_transactionQueueFailed = true;
+         return false;
+        }
+
+      state.ownedPositionIds[size] = (ulong)positionId;
+     }
       // [REV-2026-09-12-BACKBONE]: keep the O(1) aggregate current for the
    // pre-arm decision. Uses the fill's own deal fields, not the position
    // (matches UpdateSideVolumeAggregate's OUT-side reasoning for symmetry,
@@ -192,15 +209,24 @@ bool ProcessOneQueuedTransaction(GridState &state)
    // PositionGetDouble would report anyway).
    double openLot   = HistoryDealGetDouble(tx.deal, DEAL_VOLUME);
    double openPrice = HistoryDealGetDouble(tx.deal, DEAL_PRICE);
-//   UpdateSideVolumeAggregate(g_state, tx.dealtype, dealEntry, openLot, openPrice);
-   if(!UpdateSideVolumeAggregate(state, tx.deal))
-   {
-      g_transactionQueue[g_transactionHead].historyRetries++;
-      if(g_transactionQueue[g_transactionHead].historyRetries >= 4)
-         g_transactionQueueFailed = true;
-         return false;
-   }
-   ProcessOrderFill(tx.position, state);
+   UpdateSideVolumeAggregate(g_state, tx.dealtype, dealEntry, openLot, openPrice);
+
+   ProcessOrderFill(tx.position, tx.dealtype, openLot, openPrice, state);
+   
+//   ENUM_ORDER_TYPE fillDirection = (tx.dealtype == DEAL_TYPE_BUY) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+//   UpdateRunawayStreak(state, fillDirection);
+
+   if(InpRunawayN > 0 &&
+      (InpRunawayAction == RUNAWAY_ACTION_CLOSE_ALL ||
+       InpRunawaySLMode != RA_SL_NONE))
+     {
+      if(!ProcessRunawayGuard(state))
+        {
+         RemoveQueuedTransaction();
+         return true;
+        }
+     }
+//   ProcessOrderFill(tx.position, state);
    ReSnapshotIfArmed(state);
    UpdateOppositeGrid(state);
    ProcessInsideStrategy(state);
@@ -222,7 +248,6 @@ bool ProcessOneQueuedTransaction(GridState &state)
 
 void ExecuteFastTasks(ulong frameStartMicro, ulong budgetMicro, GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_EXECUTEFASTTASKS);
 /*   if(state.cleanupInProgress)
      {
       if(g_cleanupAdvancePending)
@@ -248,13 +273,12 @@ void ExecuteFastTasks(ulong frameStartMicro, ulong budgetMicro, GridState &state
    if(GetMicrosecondCount() - frameStartMicro >= budgetMicro)
       return;
 
-   if(state.cycleActive)
+   if(state.cycleActive || state.slWallArmed)
       ProcessSLManager(state);
 }
 
 void ExecuteMediumTasks(ulong frameStartMicro, ulong budgetMicro, GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_EXECUTEMEDIUMTASKS);
 //
    if(state.cleanupInProgress)
      {
@@ -293,9 +317,6 @@ void ExecuteMediumTasks(ulong frameStartMicro, ulong budgetMicro, GridState &sta
          CountOrders(state.magicNumber) == 0)
          ResetGridBuilder(state);
 
-      if(state.slWallArmed && !state.cycleActive)
-         ResetSLManager(state);
-
       g_reconcilePending = false;
      }
 
@@ -310,7 +331,13 @@ void ExecuteMediumTasks(ulong frameStartMicro, ulong budgetMicro, GridState &sta
       DeleteAllOrders(state.magicNumber);
       ResetGridBuilder(state);
      }
-
+//
+   CheckAndBuildGrid(state);
+   
+   if(state.cleanupInProgress ||
+      GetMicrosecondCount() - frameStartMicro >= budgetMicro)
+      return;
+/*
    CheckAndBuildGrid(state);
 
    if(GetMicrosecondCount() - frameStartMicro >= budgetMicro)
@@ -319,7 +346,7 @@ void ExecuteMediumTasks(ulong frameStartMicro, ulong budgetMicro, GridState &sta
    if(state.needsGridVerification)
      {
       state.needsGridVerification = false;
-      if(!VerifyFreshGrid(state, state.lotMode))
+      if(!VerifyFreshGrid(state))
         {
          LogDebug("[Coordinator] Fresh grid failed verification — resetting.");
          TriggerSafetyStop(state, "GRID_VERIFICATION_FAILED");
@@ -328,7 +355,7 @@ void ExecuteMediumTasks(ulong frameStartMicro, ulong budgetMicro, GridState &sta
 
    if(GetMicrosecondCount() - frameStartMicro >= budgetMicro)
       return;
-
+*/
    if(!state.cleanupInProgress && state.outsideRefillPending)
      {
       RefillOutside(state);
@@ -344,7 +371,6 @@ void ExecuteMediumTasks(ulong frameStartMicro, ulong budgetMicro, GridState &sta
 
 void ExecuteSlowTasks()
 {
-   CTimeGaugeScope timeGauge(GAUGE_EXECUTESLOWTASKS);
    UpdateDashboard(g_state);
 }
 
@@ -357,7 +383,6 @@ void ExecuteSlowTasks()
 //+------------------------------------------------------------------+
 void RunScheduler(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_RUNSCHEDULER);
    ulong frameStartMicro = GetMicrosecondCount();
    uint currentTick = GetTickCount();
 

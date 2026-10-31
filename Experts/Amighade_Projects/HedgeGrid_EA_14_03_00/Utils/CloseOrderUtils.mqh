@@ -9,7 +9,6 @@
 //+------------------------------------------------------------------+
 #ifndef CLOSE_ORDER_UTILS_MQH
 #define CLOSE_ORDER_UTILS_MQH
-#include "TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 
@@ -77,7 +76,6 @@ void BuildZigzagPositionOrder(int magicNumber, ulong &orderedTickets[])
 //+------------------------------------------------------------------+
 void BuildProximityOrderOrder(int magicNumber, ulong &orderedTickets[])
   {
-   CTimeGaugeScope timeGauge(GAUGE_BUILDPROXIMITYORDERORDER);
    ulong  tickets[];
    double dist[];
    int    n = 0;
@@ -130,7 +128,6 @@ void BuildProximityOrderOrder(int magicNumber, ulong &orderedTickets[])
 //+------------------------------------------------------------------+
 void BuildAbsProfitPositionOrder(int magicNumber, ulong &orderedTickets[])
   {
-   CTimeGaugeScope timeGauge(GAUGE_BUILDABSPROFITPOSITIONORDER);
    ulong  tickets[];
    double absProfits[];
    int    n = 0;

@@ -1,6 +1,5 @@
 #ifndef STATE_PERSISTENCE_MQH
 #define STATE_PERSISTENCE_MQH
-#include "TimeGauge.mqh"
 
 #include "../Models/GridState.mqh"
 
@@ -13,7 +12,6 @@ string GetStateFileName(int magicNumber)
 
 void SaveGridState(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_SAVEGRIDSTATE);
    int fh = FileOpen(GetStateFileName(state.magicNumber), FILE_WRITE | FILE_BIN);
    if(fh == INVALID_HANDLE) { LogDebug("[StatePersistence] Save failed to open file."); return; }
 
@@ -22,7 +20,6 @@ void SaveGridState(GridState &state)
    FileWriteInteger(fh, state.cycleActive);
    FileWriteInteger(fh, state.gridPlaced);
    FileWriteInteger(fh, state.passCounter);
-   FileWriteInteger(fh, (int)state.lotMode);
    FileWriteDouble (fh, state.anchorBuy);
    FileWriteDouble (fh, state.anchorSell);
 
@@ -77,6 +74,8 @@ void SaveGridState(GridState &state)
    FileWriteLong   (fh, (long)state.lastBarRecenter);
 
    FileWriteInteger(fh, (int)state.mode);
+   FileWriteDouble(fh, state.buyRequiredLot);
+   FileWriteDouble(fh, state.sellRequiredLot);
 
    FileClose(fh);
 }
@@ -85,7 +84,6 @@ void SaveGridState(GridState &state)
 // Caller must call ResetGridState first if this returns false.
 bool LoadGridState(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_LOADGRIDSTATE);
    string fname = GetStateFileName(state.magicNumber);
    if(!FileIsExist(fname)) return false;
 
@@ -103,7 +101,6 @@ bool LoadGridState(GridState &state)
    state.cycleActive        = (bool)FileReadInteger(fh);
    state.gridPlaced         = (bool)FileReadInteger(fh);
    state.passCounter        = FileReadInteger(fh);
-   state.lotMode            = (ENUM_LOT_MODE)FileReadInteger(fh);
    state.anchorBuy          = FileReadDouble(fh);
    state.anchorSell         = FileReadDouble(fh);
 
@@ -163,6 +160,8 @@ bool LoadGridState(GridState &state)
    state.lastBarRecenter    = (datetime)FileReadLong(fh);
 
    state.mode               = (EA_MODE)FileReadInteger(fh);
+   state.buyRequiredLot     = FileReadDouble(fh);
+   state.sellRequiredLot    = FileReadDouble(fh);
 
    FileClose(fh);
    return true;

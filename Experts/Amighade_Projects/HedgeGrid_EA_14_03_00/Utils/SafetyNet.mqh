@@ -20,7 +20,6 @@
 //+------------------------------------------------------------------+
 #ifndef SAFETY_NET_MQH
 #define SAFETY_NET_MQH
-#include "TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -29,13 +28,13 @@
 #include "CloseOrderUtils.mqh"
 #include "TelegramUtils.mqh"
 
+void StartCleanupSequence(GridState &state);
 //+------------------------------------------------------------------+
 //| Universal safety stop. Call from anywhere a critical trade         |
 //| operation has definitively failed, or on manual emergency close. |
 //+------------------------------------------------------------------+
 void TriggerSafetyStop(GridState &state, string reason)
   {
-   CTimeGaugeScope timeGauge(GAUGE_TRIGGERSAFETYSTOP);
    LogDebug(StringFormat("[SafetyNet] TRIGGERED. Reason=%s. Closing everything.", reason));
 
    // --- Close positions first (closing always outranks opening/modifying) ---
@@ -67,6 +66,14 @@ void TriggerSafetyStop(GridState &state, string reason)
    //Alert(summary);
    SendTelegramMessage(summary);
 
+   // Continue cleanup if any close/delete request left a broker object alive.
+   if(CountPositions(state.magicNumber) > 0 ||
+      CountOrders(state.magicNumber) > 0)
+     {
+      if(!state.cleanupInProgress)
+         StartCleanupSequence(state);
+      return;
+     }
    // --- Reset all cycle state so the medium timer check may rebuild fresh ---
    int savedMagic = state.magicNumber;
    ResetGridState(state);

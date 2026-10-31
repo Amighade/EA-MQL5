@@ -5,7 +5,6 @@
 //+------------------------------------------------------------------+
 #ifndef SESSION_FILTER_MQH
 #define SESSION_FILTER_MQH
-#include "TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 
@@ -87,7 +86,6 @@ bool IsInTimeWindow(string window)
 //+------------------------------------------------------------------+
 bool IsSessionAllowed()
 {
-   CTimeGaugeScope timeGauge(GAUGE_ISSESSIONALLOWED);
    if(!UseTimeFilter) return true;
 
    bool allow = false;

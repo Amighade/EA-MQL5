@@ -45,7 +45,6 @@
 //+------------------------------------------------------------------+
 #ifndef SL_MANAGER_MQH
 #define SL_MANAGER_MQH
-#include "../Utils/TimeGauge.mqh"
 
 #include "SLGridFeasibility.mqh"
 #include "../Inputs.mqh"
@@ -54,6 +53,8 @@
 #include "../Utils/MathUtils.mqh"
 #include "../Utils/DebugLogger.mqh"
 #include "../Utils/SafetyNet.mqh"
+
+void StartCleanupSequence(GridState &state);
 
 //--- Struct at file scope (Bug fix #5 — MQL5 forbids struct-in-function)
 struct SLPosInfo
@@ -79,11 +80,49 @@ ENUM_POSITION_TYPE GetWinningDirection(GridState &state)
 //+------------------------------------------------------------------+
 //| Grid-line SL candidate search (Brick 6 core algorithm)            |
 //+------------------------------------------------------------------+
-double CalculateSLCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide, int magicNumber,
-                            ENUM_SL_MODE mode)
+double CalculateSLCandidate(GridState &state,
+                           ENUM_POSITION_TYPE winnerSide,
+                           int magicNumber,
+                           ENUM_SL_MODE mode)
 {
-   CTimeGaugeScope timeGauge(GAUGE_CALCULATESLCANDIDATE);
-   return SL_FindCandidate(state, winnerSide, magicNumber, mode);
+   double slLevel = SL_FindCandidate(state, winnerSide, magicNumber, mode);
+   if(slLevel <= 0.0) return 0.0;
+
+   double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask     = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double minStop = MinStopDistancePrice(_Symbol);
+   double tick    = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double oldSL   = state.slLevel;
+
+   if(tick <= 0.0) return 0.0;
+
+   if(winnerSide == POSITION_TYPE_BUY)
+     {
+      slLevel = MathMin(slLevel, bid - minStop);
+      slLevel = NormalizeDouble(MathFloor(slLevel / tick) * tick, _Digits);
+
+      if(slLevel <= 0.0 || slLevel >= bid ||
+         slLevel > bid - minStop)
+         return 0.0;
+
+      if(oldSL > 0.0 && slLevel <= oldSL)
+         return 0.0;
+     }
+   else if(winnerSide == POSITION_TYPE_SELL)
+     {
+      slLevel = MathMax(slLevel, ask + minStop);
+      slLevel = NormalizeDouble(MathCeil(slLevel / tick) * tick, _Digits);
+
+      if(slLevel <= ask || slLevel < ask + minStop)
+         return 0.0;
+
+      if(oldSL > 0.0 && slLevel >= oldSL)
+         return 0.0;
+     }
+   else
+      return 0.0;
+
+   return slLevel;
 }
 //+------------------------------------------------------------------+
 //| Apply SL to every ticket in the armed-winner snapshot.            |
@@ -92,7 +131,6 @@ double CalculateSLCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide, int
 //+------------------------------------------------------------------+
 int ApplySLToWinners(double slLevel, GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_APPLYSLTOWINNERS);
    int    count  = 0;
    double slNorm = NormalizeDouble(slLevel, _Digits);
 
@@ -101,17 +139,11 @@ int ApplySLToWinners(double slLevel, GridState &state)
       ulong t = g_ArmedWinnerTickets[i];
       if(!PositionSelectByTicket(t)) continue; // already closed, skip
 
-      double oldNorm = NormalizeDouble(PositionGetDouble(POSITION_SL), _Digits);
-      if(oldNorm == slNorm && slNorm > 0.0) { count++; continue; }
+//      double oldNorm = NormalizeDouble(PositionGetDouble(POSITION_SL), _Digits);
+//      if(oldNorm == slNorm && slNorm > 0.0) continue;
 
       if(ModifyPositionSL(t, slLevel))
          count++;
-      else
-        {
-         // Bug 1.a: SL modification failure -> immediate safety stop
-         TriggerSafetyStop(state, StringFormat("SL_MODIFY_FAILED ticket=%I64u", t));
-         return -1;
-        }
      }
    return count;
 }
@@ -123,7 +155,6 @@ int ApplySLToWinners(double slLevel, GridState &state)
 //+------------------------------------------------------------------+
 void SnapshotWinners(int magicNumber, ENUM_POSITION_TYPE winnerSide)
 {
-   CTimeGaugeScope timeGauge(GAUGE_SNAPSHOTWINNERS);
    ArrayResize(g_ArmedWinnerTickets, 0);
    for(int i = 0; i < PositionsTotal(); i++)
      {
@@ -178,7 +209,6 @@ void ResetSLManager(GridState &state)
 //+------------------------------------------------------------------+
 void ArmSL(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_ARMSL);
    ENUM_POSITION_TYPE winnerSide = (state.lastHitDirection == ORDER_TYPE_BUY) ?
                                    POSITION_TYPE_BUY : POSITION_TYPE_SELL;
    ENUM_POSITION_TYPE loserSide  = (winnerSide == POSITION_TYPE_BUY) ?
@@ -192,9 +222,11 @@ void ArmSL(GridState &state)
    if(ArraySize(g_ArmedWinnerTickets) == 0) return;
 
    int applied = ApplySLToWinners(slLevel, state);
-   if(applied < 0) return; // safety stop already triggered
-   if(applied == 0) return;
-
+   if(applied == 0)
+        {
+         TriggerSafetyStop(state, "SL_MODIFY_FAILED no position is armed");
+         return;
+        }
    // Winner side is always frozen from here -- trailing owns it via
    // g_ArmedWinnerTickets/the SL order itself, not this aggregate.
    //if(winnerSide == POSITION_TYPE_BUY) { state.buyVolume = 0; state.buyAvgEntry = 0; }
@@ -213,8 +245,16 @@ void ArmSL(GridState &state)
 //+------------------------------------------------------------------+
 void TrailWall(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_TRAILWALL);
-   if(ArraySize(g_ArmedWinnerTickets) == 0) return;
+   if(ArraySize(g_ArmedWinnerTickets) == 0)
+     {
+      ReSnapshotIfArmed(state);
+
+      if(ArraySize(g_ArmedWinnerTickets) == 0)
+        {
+         StartCleanupSequence(state);
+         return;
+        }
+     }
 
    ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
    double price = (winnerSide == POSITION_TYPE_BUY) ?
@@ -226,24 +266,14 @@ void TrailWall(GridState &state)
    if(slLevel <= 0) return; // not safe yet, try again next tick
 
    int applied = ApplySLToWinners(slLevel, state);
-   if(applied < 0) return; // safety stop already triggered
-   if(applied == 0) return;
-   
-   ulong t = g_ArmedWinnerTickets[0];
-   if(!PositionSelectByTicket(t))
-   {
-   ResetSLManager(state);
-   } 
-   else
-   {
-   slLevel = PositionGetDouble(POSITION_SL);
-   
-   state.slWallArmed  = true;
-   state.slApplied    = true;
-   state.slLevel      = slLevel;
-   state.slWinnerSide = (int)winnerSide;
-   LogSLTriggered("SL_ARMED", slLevel);
-   }
+   if(applied == 0)
+        {
+         TriggerSafetyStop(state, "SL_MODIFY_FAILED no position is trailed");
+         return;
+        }
+
+   state.slLevel = slLevel;
+   LogSLTriggered("SL_TRAILED", state.slLevel);
 }
 //+------------------------------------------------------------------+
 //| Called by coordinator when an armed winner closes (DEAL_ENTRY_OUT|
@@ -272,7 +302,6 @@ void RecalcOnWinnerClose(GridState &state)
 //+------------------------------------------------------------------+
 void ProcessSLManager(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_PROCESSSLMANAGER);
    if(state.slWallArmed)
      {
       if(InpSLTrailMode != SL_NONE) TrailWall(state);
@@ -283,13 +312,15 @@ void ProcessSLManager(GridState &state)
 
    ENUM_POSITION_TYPE candidateSide = (state.lastHitDirection == ORDER_TYPE_BUY) ?
                                       POSITION_TYPE_BUY : POSITION_TYPE_SELL;
-   double vol   = (candidateSide == POSITION_TYPE_BUY) ? state.buyVolume   : state.sellVolume;
-   double entry = (candidateSide == POSITION_TYPE_BUY) ? state.buyAvgEntry : state.sellAvgEntry;
    double price = (candidateSide == POSITION_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
                                                         : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double profit = SideProfitAtPrice(candidateSide, vol, entry, price);
+   double profit = 0;
+   double netProfit = 0;
+   
+   NetBasketAtPrice(state);
+      
+   if(state.basketNetProfit <= 0) return;
 
-   if(profit <= 0) return;
    ArmSL(state);
 }
 #endif

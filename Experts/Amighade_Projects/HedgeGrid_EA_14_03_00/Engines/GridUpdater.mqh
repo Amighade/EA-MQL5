@@ -14,7 +14,6 @@
 //+------------------------------------------------------------------+
 #ifndef GRID_UPDATER_MQH
 #define GRID_UPDATER_MQH
-#include "../Utils/TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -146,7 +145,7 @@ void UpdateOppositeGrid_SecondPass(ENUM_ORDER_TYPE hitDirection,
 //+------------------------------------------------------------------+
 //| Sub-option A — pass-counter driven (the only implemented mode)   |
 //+------------------------------------------------------------------+
-void UpdateOppositeGrid_ModeA(GridState &state)
+void UpdateOppositeGrid_ModeA_old(GridState &state)
 {
    double newLot = AlignVolume(_Symbol, state.lastHitLot * 2.0);
    UpdateOppositeGrid_FirstPass(state.lastHitDirection, newLot, state);
@@ -156,7 +155,19 @@ void UpdateOppositeGrid_ModeA(GridState &state)
    else
       UpdateOppositeGrid_SecondPass(state.lastHitDirection, newLot, state);*/
 }
+void UpdateOppositeGrid_ModeA(GridState &state)
+{
+   double newLot = AlignVolume(_Symbol, state.lastHitLot * 2.0);
 
+   if(state.lastHitDirection == ORDER_TYPE_BUY)
+      state.sellRequiredLot = MathMax(state.sellRequiredLot, newLot);
+   else if(state.lastHitDirection == ORDER_TYPE_SELL)
+      state.buyRequiredLot = MathMax(state.buyRequiredLot, newLot);
+   else
+      return;
+
+   UpdateOppositeGrid_FirstPass(state.lastHitDirection, newLot, state);
+}
 //+------------------------------------------------------------------+
 //| Sub-option B — STUB. Reserved for future logic. Currently no-op. |
 //+------------------------------------------------------------------+
@@ -179,7 +190,6 @@ void UpdateOppositeGrid_ModeC(GridState &state)
 //+------------------------------------------------------------------+
 void UpdateOppositeGrid(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_UPDATEOPPOSITEGRID);
    if(InpLotIncreaseMode == LOT_INC_NONE) return;
    switch(InpLotIncreaseMode)
      {

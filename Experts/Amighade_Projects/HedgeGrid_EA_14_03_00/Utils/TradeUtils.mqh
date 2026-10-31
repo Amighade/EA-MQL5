@@ -10,7 +10,6 @@
 //+------------------------------------------------------------------+
 #ifndef TRADE_UTILS_MQH
 #define TRADE_UTILS_MQH
-#include "TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -158,7 +157,6 @@ TradeActionResult PlacePendingOrder(const string sym, ENUM_ORDER_TYPE orderType,
                                     double lot, double price, double sl, double tp,
                                     int magicNumber)
 {
-   CTimeGaugeScope timeGauge(GAUGE_PLACEPENDINGORDER);
    MqlTradeRequest req = {};
    MqlTradeResult  res = {};
 
@@ -177,7 +175,7 @@ TradeActionResult PlacePendingOrder(const string sym, ENUM_ORDER_TYPE orderType,
    ResetLastError();
    ZeroMemory(res);
 
-   bool sent = TimeGaugeOrderSend(req, res);
+   bool sent = OrderSend(req, res);
 
    TradeActionResult out;
    out.sent      = sent;
@@ -199,7 +197,6 @@ ulong PlacePendingWithWidening(const string sym, ENUM_ORDER_TYPE orderType,
                                double lot, double entry, double sl, double tp,
                                int magicNumber)
 {
-   CTimeGaugeScope timeGauge(GAUGE_PLACEPENDINGWITHWIDENING);
    int totalAttempts = 0;
    for(int step = 0; step <= WIDEN_MAX_STEPS && totalAttempts < 3; step++)
      {
@@ -265,7 +262,6 @@ ulong PlaceSellStop(double price, double lot, int magicNumber, double sl=0, doub
 //+------------------------------------------------------------------+
 bool DeleteOrder(ulong ticket)
 {
-   CTimeGaugeScope timeGauge(GAUGE_DELETEORDER);
    if(!OrderSelect(ticket))
       return true;   // already gone (filled or already deleted) — nothing to do, not a failure
 
@@ -275,7 +271,7 @@ bool DeleteOrder(ulong ticket)
    req.order  = ticket;
 
    ResetLastError();
-   bool sent = TimeGaugeOrderSend(req, res);
+   bool sent = OrderSend(req, res);
 
    if(!sent || (res.retcode != TRADE_RETCODE_DONE && res.retcode != TRADE_RETCODE_PLACED))
      {
@@ -289,7 +285,6 @@ bool DeleteOrder(ulong ticket)
 //+------------------------------------------------------------------+
 void DeleteAllOrders(int magicNumber)
 {
-   CTimeGaugeScope timeGauge(GAUGE_DELETEALLORDERS);
    ulong sequence[];
    BuildProximityOrderOrder(magicNumber, sequence);   // inside-to-outside, same as before
 
@@ -308,7 +303,6 @@ void DeleteAllOrders(int magicNumber)
 //+------------------------------------------------------------------+
 bool ClosePosition(ulong ticket)
 {
-   CTimeGaugeScope timeGauge(GAUGE_CLOSEPOSITION);
    g_lastCloseRequestAccepted = false;
    int maxAttempts = MathMax(1, MathMin(InpSafetyRetryAttempts, 3));
    for(int attempt = 0; attempt < maxAttempts; attempt++)
@@ -335,7 +329,7 @@ bool ClosePosition(ulong ticket)
       req.type_filling = g_fillMode;
       req.type_time    = ORDER_TIME_GTC;
 
-      if(TimeGaugeOrderSend(req, res))
+      if(OrderSend(req, res))
         {
          if(res.retcode == TRADE_RETCODE_DONE || res.retcode == TRADE_RETCODE_DONE_PARTIAL)
            {
@@ -375,7 +369,6 @@ bool ClosePosition(ulong ticket)
 //+------------------------------------------------------------------+
 bool FastClosePosition(ulong ticket)
 {
-   CTimeGaugeScope timeGauge(GAUGE_FASTCLOSEPOSITION);
    if(!PositionSelectByTicket(ticket)) return true;
 
    string sym = PositionGetString(POSITION_SYMBOL);
@@ -397,7 +390,7 @@ bool FastClosePosition(ulong ticket)
    req.type_filling = g_fillMode;
    req.type_time    = ORDER_TIME_GTC;
 
-   bool sent = TimeGaugeOrderSend(req, res);
+   bool sent = OrderSend(req, res);
    if(!sent) ResetLastError();
    return sent && (res.retcode == TRADE_RETCODE_DONE ||
                    res.retcode == TRADE_RETCODE_DONE_PARTIAL);
@@ -408,12 +401,11 @@ bool FastClosePosition(ulong ticket)
 //+------------------------------------------------------------------+
 bool ModifyPositionSL(ulong ticket, double newSL)
 {
-   CTimeGaugeScope timeGauge(GAUGE_MODIFYPOSITIONSL);
    if(!PositionSelectByTicket(ticket)) return false;
 
    // Validate SL against broker rules
-   double safeSL = ValidateStopPrice(ticket, newSL);
-   if(safeSL <= 0.0) return false;
+   //double safeSL = ValidateStopPrice(ticket, newSL);
+   //if(safeSL <= 0.0) return false;
 
    string symbol = PositionGetString(POSITION_SYMBOL);
    double curTP  = PositionGetDouble(POSITION_TP);
@@ -428,11 +420,11 @@ bool ModifyPositionSL(ulong ticket, double newSL)
       req.action   = TRADE_ACTION_SLTP;
       req.position = ticket;
       req.symbol   = symbol;
-      req.sl       = NormalizeDouble(safeSL, digits);
+      req.sl       = NormalizeDouble(newSL, digits);
       req.tp       = curTP;
 
       ResetLastError();
-      bool sent = TimeGaugeOrderSend(req, res);
+      bool sent = OrderSend(req, res);
 
       if(sent && (res.retcode == TRADE_RETCODE_DONE || res.retcode == TRADE_RETCODE_NO_CHANGES))
          return true;
@@ -442,7 +434,7 @@ bool ModifyPositionSL(ulong ticket, double newSL)
       break;
      }
 
-   LogDebug(StringFormat("ModifyPositionSL FAILED: ticket=%I64u sl=%.2f", ticket, safeSL));
+   LogDebug(StringFormat("ModifyPositionSL FAILED: ticket=%I64u sl=%.2f", ticket, newSL));
    return false;
 }
 
@@ -451,7 +443,6 @@ bool ModifyPositionSL(ulong ticket, double newSL)
 //+------------------------------------------------------------------+
 int CountPositions(int magicNumber)
 {
-   CTimeGaugeScope timeGauge(GAUGE_COUNTPOSITIONS);
    int count = 0;
    for(int i = 0; i < PositionsTotal(); i++)
      {
@@ -469,7 +460,6 @@ int CountPositions(int magicNumber)
 //+------------------------------------------------------------------+
 int CountOrders(int magicNumber)
 {
-   CTimeGaugeScope timeGauge(GAUGE_COUNTORDERS);
    int count = 0;
    for(int i = 0; i < OrdersTotal(); i++)
      {

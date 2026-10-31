@@ -9,18 +9,6 @@
 
 #include "../Inputs.mqh"
 
-double SideProfitAtPrice(ENUM_POSITION_TYPE side, double volume, double avgEntry, double price)
-{
-   if(volume <= 0) return 0.0;
-
-   double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-   double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-   if(tickVal <= 0 || tickSz <= 0) return -1;
-   double moneyPerPrice = tickVal / tickSz;
-
-   double diff = (side == POSITION_TYPE_BUY) ? (price - avgEntry) : (avgEntry - price);
-   return diff * moneyPerPrice * volume - InpCommissionPerLot * volume;
-}
 //+------------------------------------------------------------------+
 //| Snap price to nearest broker tick size                           |
 //+------------------------------------------------------------------+

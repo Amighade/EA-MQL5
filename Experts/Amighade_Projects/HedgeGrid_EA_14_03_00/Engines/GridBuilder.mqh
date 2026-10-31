@@ -12,7 +12,6 @@
 //+------------------------------------------------------------------+
 #ifndef GRID_BUILDER_MQH
 #define GRID_BUILDER_MQH
-#include "../Utils/TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -282,7 +281,7 @@ double GetHighestBuyPosition(int magicNumber, double &outLot)
 //| SHARED PLACEMENT HELPER — places a BUY/SELL pair, price-outward, |
 //| candle-direction ordered (unchanged from original implementation)|
 //+------------------------------------------------------------------+
-void PlaceOrderPair(double buyPrice, double buyLot,
+void PlaceOrderPair_old(double buyPrice, double buyLot,
                     double sellPrice, double sellLot, int magicNumber, double buySl, double sellSl)
 {
    if(IsBullishCandle())
@@ -293,25 +292,58 @@ void PlaceOrderPair(double buyPrice, double buyLot,
        PlaceSellStop(sellPrice, sellLot, magicNumber, sellSl); }
 }
 
+bool PlaceOrderPair(double buyPrice, double buyLot,
+                    double sellPrice, double sellLot,
+                    int magicNumber, double buySl, double sellSl)
+{
+   if(IsBullishCandle())
+     {
+      if(PlaceSellStop(sellPrice, sellLot, magicNumber, sellSl) == 0)
+         return false;
+
+      return PlaceBuyStop(buyPrice, buyLot, magicNumber, buySl) > 0;
+     }
+   else
+     {
+      if(PlaceBuyStop(buyPrice, buyLot, magicNumber, buySl) == 0)
+         return false;
+
+      return PlaceSellStop(sellPrice, sellLot, magicNumber, sellSl) > 0;
+     }
+}
 //+------------------------------------------------------------------+
 //| MASTER BUILD — one unified builder for every brick combination.  |
 //| Lot sizing per level comes from SizingUtils (fixed or ladder).  |
 //+------------------------------------------------------------------+
-void BuildGrid(double price, ENUM_LOT_MODE lotMode, GridState &state)
+void BuildGrid(double price, GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_BUILDGRID);
    double firstBuy, firstSell;
 
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double spread  = ask - bid;
    double minStop = MinStopDistancePrice(_Symbol);
+   double halfGap = InpInitialGap / 2.0;
 
    if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE)
      {
       ENUM_TIMEFRAMES tf = (Timeframe == 0) ? (ENUM_TIMEFRAMES)Period() : Timeframe;
-      firstBuy  = AlignToTick(_Symbol, iHigh(_Symbol, tf, 1));
-      firstSell = AlignToTick(_Symbol, iLow(_Symbol, tf, 1));
+      double prevHigh = iHigh(_Symbol, tf, 1);
+      double prevLow  = iLow(_Symbol, tf, 1);
+      if(prevHigh <= 0.0 || prevLow <= 0.0 || prevHigh < prevLow)
+         return;
+      if(bid >= prevLow && ask <= prevHigh && (prevHigh - ask) >= minStop && (bid - prevLow) >= minStop)
+        {
+         firstBuy  = AlignToTick(_Symbol, prevHigh);
+         firstSell = AlignToTick(_Symbol, prevLow);
+         LogDebug("[BuildGrid] Anchoring to stable previous bar range coordinates.");
+        }
+      else
+        {
+         firstBuy  = AlignToTick(_Symbol, MathMax(price + halfGap, prevHigh));
+         firstSell = AlignToTick(_Symbol, MathMin(price - halfGap, prevLow));
+         LogDebug("[BuildGrid] Fast market or boundary pierce detected. Activating live-price fallback.");
+        }
      }
    else
      {
@@ -319,100 +351,44 @@ void BuildGrid(double price, ENUM_LOT_MODE lotMode, GridState &state)
       firstBuy  = AlignToTick(_Symbol, price + halfGap);
       firstSell = AlignToTick(_Symbol, price - halfGap);
      }
+     
+   if(bid <= 0.0 || ask <= 0.0 || ask < bid)
+      return;
 
-   // range means "prev-bar high-low" only in ANCHOR_PREV_BAR_RANGE mode.
-   // In ANCHOR_CURRENT_PRICE mode, firstBuy - firstSell is just InpInitialGap,
-   // not a volatility measure — FIRST_SL_RANGE_FRAC falls back to 0 (no SL)
-   // there rather than silently using a meaningless number.
-   double range = 0.0;
-   if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE)
-      range = firstBuy - firstSell;
-   else if(InpFirstLevelSLMode == FIRST_SL_RANGE_FRAC)
-      LogDebug("[BuildGrid] FIRST_SL_RANGE_FRAC has no meaningful range in ANCHOR_CURRENT_PRICE mode — SL skipped.");
+   double range = firstBuy - firstSell;
 
    double slDist = GetFirstLevelSLDistance(range, spread, minStop);
 
-   int maxLevels = GetMaxLevels(lotMode);
+   int maxLevels = GetMaxLevels();
    for(int level = 1; level <= maxLevels; level++)
      {
       double bp  = AlignToTick(_Symbol, firstBuy  + InpGridSpacing * (level-1));
       double sp  = AlignToTick(_Symbol, firstSell - InpGridSpacing * (level-1));
-      double lot = GetLot(level, lotMode);
+      double lot = GetLot(level);
 
       double bsl = (level == 1 && slDist > 0) ? AlignToTick(_Symbol, bp - slDist) : 0;
       double ssl = (level == 1 && slDist > 0) ? AlignToTick(_Symbol, sp + slDist) : 0;
 
-      PlaceOrderPair(bp, lot, sp, lot, state.magicNumber, bsl, ssl);
+//      PlaceOrderPair(bp, lot, sp, lot, state.magicNumber, bsl, ssl);
+      if(!PlaceOrderPair(bp, lot, sp, lot,
+                  state.magicNumber, bsl, ssl))
+        {
+         LogDebug("[BuildGrid] Placement failed; starting cleanup.");
+         StartCleanupSequence(state);
+         return;
+        }
      }
 
    state.anchorBuy       = firstBuy;
    state.anchorSell      = firstSell;
    state.gridPlaced      = true;
    state.cycleActive     = false;
-   state.currentBlockLot = GetLot(1, lotMode);
+   state.currentBlockLot = GetLot(1);
    state.farthestHitBuy  = 0.0;
    state.farthestHitSell = 0.0;
-   LogGridBuilt(firstBuy, firstSell, lotMode==LOT_FULL?"FULL":"HALF");
-   state.gridPlaced             = true;
-   state.needsGridVerification  = true;   // verified on the next medium timer pass
+   LogGridBuilt(firstBuy, firstSell);
+//   state.needsGridVerification  = true;   // verified on the next medium timer pass
 }
-
-
-/*
-void BuildGrid(double price, ENUM_LOT_MODE lotMode, GridState &state)
-{
-   double firstBuy, firstSell;
-      
-   if(InpGridAnchorMode == ANCHOR_PREV_BAR_RANGE)
-     {
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double spread  = ask - bid;
-      double minStop = MinStopDistancePrice(_Symbol);
-      ENUM_TIMEFRAMES tf = (Timeframe == 0) ? (ENUM_TIMEFRAMES)Period() : Timeframe;
-      firstBuy  = AlignToTick(_Symbol, iHigh(_Symbol, tf, 1));
-      firstSell = AlignToTick(_Symbol, iLow(_Symbol, tf, 1));
-      int maxLevels = GetMaxLevels(lotMode);
-      for(int level = 1; level <= maxLevels; level++)
-        {
-         double bp  = AlignToTick(_Symbol, firstBuy  + InpGridSpacing * (level-1));
-         double sp  = AlignToTick(_Symbol, firstSell - InpGridSpacing * (level-1));
-         double lot = GetLot(level, lotMode);
-         double ssl = (level == 1) ? sp + (spread + minStop) : 0;
-         double bsl = (level == 1) ? bp - (spread + minStop) : 0;
-         //double ssl = (level == 1) ? bp + (spread + minStop) : 0;
-         //double bsl = (level == 1) ? sp - (spread + minStop) : 0;
-         PlaceOrderPair(bp, lot, sp, lot, state.magicNumber, bsl, ssl);
-        }
-     }
-   else
-     {
-      double halfGap = InpInitialGap / 2.0;
-      firstBuy  = AlignToTick(_Symbol, price + halfGap);
-      firstSell = AlignToTick(_Symbol, price - halfGap);
-      int maxLevels = GetMaxLevels(lotMode);
-      for(int level = 1; level <= maxLevels; level++)
-        {
-         double bp  = AlignToTick(_Symbol, firstBuy  + InpGridSpacing * (level-1));
-         double sp  = AlignToTick(_Symbol, firstSell - InpGridSpacing * (level-1));
-         double lot = GetLot(level, lotMode);
-         double ssl = 0;
-         double bsl = 0;
-         PlaceOrderPair(bp, lot, sp, lot, state.magicNumber, bsl, ssl);
-        }
-     }
-
-   state.anchorBuy       = firstBuy;
-   state.anchorSell      = firstSell;
-   state.gridPlaced      = true;
-   state.cycleActive     = false;
-   state.currentBlockLot = GetLot(1, lotMode);
-   state.farthestHitBuy  = 0.0;
-   state.farthestHitSell = 0.0;
-
-   LogGridBuilt(firstBuy, firstSell, lotMode==LOT_FULL?"FULL":"HALF");
-}*/
-
 //+------------------------------------------------------------------+
 //| Computes the first-level SL distance from a given entry price,   |
 //| per InpFirstLevelSLMode. 'entry' is bp for the buy side, sp for   |
@@ -449,7 +425,6 @@ double GetFirstLevelSLDistance(double range, double spread, double minStop)
 //+------------------------------------------------------------------+
 void FillOneSideInside(ENUM_ORDER_TYPE orderType, GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_FILLONESIDEINSIDE);
    bool   isBuy      = (orderType == ORDER_TYPE_BUY_STOP);
    double nearestBuy = GetNearestBuyStop(state.magicNumber);
    double nearestSell= GetNearestSellStop(state.magicNumber);
@@ -495,7 +470,6 @@ void FillOneSideInside(ENUM_ORDER_TYPE orderType, GridState &state)
 //+------------------------------------------------------------------+
 void RefillFollowPriceInside(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_REFILLFOLLOWPRICEINSIDE);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    int    currentSell = CountOrderType(ORDER_TYPE_SELL_STOP, state.magicNumber);
@@ -571,10 +545,10 @@ void RefillFollowPriceInside(GridState &state)
 
 void RefillOutside(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_REFILLOUTSIDE);
    if(InpOutsideRefillStyle == OUTSIDE_NONE) return;
 
    OutsideRefillSnapshot snap;
+   
    BuildOutsideRefillSnapshot(state.magicNumber, snap);
 
    //Print(__FILE__, " Line: ", __LINE__, " sellOrderCount=", snap.sellOrderCount, " buyOrderCount=", snap.buyOrderCount);
@@ -598,9 +572,13 @@ void RefillOutside(GridState &state)
            {
             int    level = snap.sellOrderCount + snap.sellpositionCount + step;
             //Print (__FILE__,__LINE__," level: ", level);
-            double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
+            double lot   = GetOutsideRefillLot(level, anchorLot);
             //Print (__FILE__,__LINE__," lot: ", lot);
-            lot = MathMax(lot, snap.lowestSellOrderLot);
+            //lot = MathMax(lot, sellLotFloor);
+            
+            if(InpLotIncreaseMode == LOT_INC_A)
+            lot = MathMax(lot, state.sellRequiredLot);
+            
             //Print (__FILE__,__LINE__," lot: ", lot);
             double price = AlignToTick(_Symbol, anchor - InpGridSpacing * step);
             PlaceSellStop(price, lot, state.magicNumber);
@@ -625,9 +603,13 @@ void RefillOutside(GridState &state)
            {
             int    level = snap.buyOrderCount + snap.buypositionCount + step;
             //Print (__FILE__,__LINE__," level: ", level);
-            double lot   = GetOutsideRefillLot(level, state.lotMode, anchorLot);
+            double lot   = GetOutsideRefillLot(level, anchorLot);
             //Print (__FILE__,__LINE__," lot: ", lot);
-            lot = MathMax(lot, snap.highestBuyOrderLot);
+            //lot = MathMax(lot, buyLotFloor);
+            
+            if(InpLotIncreaseMode == LOT_INC_A)
+            lot = MathMax(lot, state.buyRequiredLot);
+               
             //Print (__FILE__,__LINE__," lot: ", lot);
             double price = AlignToTick(_Symbol, anchor + InpGridSpacing * step);
             PlaceBuyStop(price, lot, state.magicNumber);
@@ -636,14 +618,14 @@ void RefillOutside(GridState &state)
      }
 }
 
-double GetOutsideRefillLot(int level, ENUM_LOT_MODE lotMode, double anchorLot)
+double GetOutsideRefillLot(int level, double anchorLot)
 {
    switch(InpOutsideRefillStyle)
      {
       case OUTSIDE_FIXED:    return InpFixedLot;
       case OUTSIDE_LAST_LOT: return (anchorLot > 0) ? anchorLot : InpFixedLot;
-      case OUTSIDE_LADDER:   return GetLot_Ladder(level, lotMode);
-      case OUTSIDE_EXP:      return GetLot_EXP(level, lotMode);
+      case OUTSIDE_LADDER:   return GetLot_Ladder(level);
+      case OUTSIDE_EXP:      return GetLot_EXP(level);
       default:               return InpFixedLot;
      }
 }
@@ -656,7 +638,6 @@ double GetOutsideRefillLot(int level, ENUM_LOT_MODE lotMode, double anchorLot)
 //+------------------------------------------------------------------+
 void PlaceRevisitOrder(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_PLACEREVISITORDER);
    if(state.prevHitPrice <= 0.0) return;   // no predecessor yet — first fill of the cycle
 
    double level = AlignToTick(_Symbol, state.prevHitPrice);
@@ -695,7 +676,6 @@ void PlaceRevisitOrder(GridState &state)
 
 void ProcessPassRefill(GridState &state, double fillPrice, ENUM_POSITION_TYPE filledSide)
 {
-   CTimeGaugeScope timeGauge(GAUGE_PROCESSPASSREFILL);
    int side = (filledSide == POSITION_TYPE_BUY) ? 1 : 2;
 
    if(state.runSide == 0 || side == state.runSide)
@@ -742,7 +722,6 @@ void ProcessPassRefill(GridState &state, double fillPrice, ENUM_POSITION_TYPE fi
 
 void ProcessInsideMaintenance(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_PROCESSINSIDEMAINTENANCE);
    switch(InpInsideMaintenanceStyle)
      {
       case MAINTENANCE_THRESHOLD:
@@ -759,7 +738,6 @@ void ProcessInsideMaintenance(GridState &state)
 
 void ProcessInsideStrategy(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_PROCESSINSIDESTRATEGY);
    switch(InpInsideStrategyStyle)
      {
       case STRATEGY_REVISIT:
@@ -773,51 +751,6 @@ void ProcessInsideStrategy(GridState &state)
          break;   // STRATEGY_NONE
      }
 }
-//+------------------------------------------------------------------+
-//| Checked once, on the next medium timer pass after a fresh grid.   |
-//| Confirms every expected level has a pending order within one     |
-//| InpGridSpacing of its correct price. Any order missing entirely, |
-//| or drifted by a full InpGridSpacing or more (widening artifact), |
-//| fails the whole grid — no per-order repair, reset only.          |
-//+------------------------------------------------------------------+
-bool VerifyFreshGrid(GridState &state, ENUM_LOT_MODE lotMode)
-{
-   CTimeGaugeScope timeGauge(GAUGE_VERIFYFRESHGRID);
-   int maxLevels = GetMaxLevels(lotMode);
-
-   for(int level = 1; level <= maxLevels; level++)
-     {
-      double expectedBuy  = AlignToTick(_Symbol, state.anchorBuy  + InpGridSpacing * (level-1));
-      double expectedSell = AlignToTick(_Symbol, state.anchorSell - InpGridSpacing * (level-1));
-
-      bool buyFound = false, sellFound = false;
-
-      for(int i = 0; i < OrdersTotal(); i++)
-        {
-         ulong t = OrderGetTicket(i);
-         if(!OrderSelect(t)) continue;
-         if(OrderGetString(ORDER_SYMBOL) != _Symbol)           continue;
-         if(OrderGetInteger(ORDER_MAGIC) != state.magicNumber) continue;
-
-         ENUM_ORDER_TYPE type = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
-         double price = OrderGetDouble(ORDER_PRICE_OPEN);
-
-         if(type == ORDER_TYPE_BUY_STOP && MathAbs(price - expectedBuy) < InpGridSpacing)
-            buyFound = true;
-         else if(type == ORDER_TYPE_SELL_STOP && MathAbs(price - expectedSell) < InpGridSpacing)
-            sellFound = true;
-        }
-
-      if(!buyFound || !sellFound)
-        {
-         LogDebug(StringFormat("[VerifyFreshGrid] Level %d failed: buyFound=%s sellFound=%s (expected buy=%.5f sell=%.5f)",
-                               level, buyFound?"YES":"NO", sellFound?"YES":"NO", expectedBuy, expectedSell));
-         return false;
-        }
-     }
-   return true;
-}
-
 //+------------------------------------------------------------------+
 //| Items 9/10: at the start of each new candle, check whether a     |
 //| grid needs to be built, and build one if not.                    |
@@ -833,7 +766,6 @@ bool VerifyFreshGrid(GridState &state, ENUM_LOT_MODE lotMode)
 //+------------------------------------------------------------------+
 void CheckAndBuildGrid(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_CHECKANDBUILDGRID);
    //if(!IsNewBar(state.lastBarGridCheck)) return;
    if(!state.sessionAllowed)             return;
    if(state.gridPlaced)                  return;
@@ -861,14 +793,16 @@ void CheckAndBuildGrid(GridState &state)
      }
 
    
-   state.lotMode = CheckMargin(state);
    if(state.marginWarning && AccountInfoDouble(ACCOUNT_MARGIN_FREE) < InpMinAllowedMargin)
      {
       LogDebug("[Coordinator] Margin still insufficient — skipping build this candle.");
       return;
      }
    //Print(__FILE__,__LINE__," state.gridPlaced: ",state.gridPlaced);
-   BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), state.lotMode, state);
+   BuildGrid(SymbolInfoDouble(_Symbol, SYMBOL_BID), state);
+   if(state.cleanupInProgress || !state.gridPlaced)
+   return;
+   
    LogDebug("[Coordinator] No grid present — grid built on medium timer check.");
 }
 

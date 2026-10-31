@@ -1,0 +1,302 @@
+//+------------------------------------------------------------------+
+//| SLManager.mqh                                                     |
+//| BRICK 6: add SL to the winning side once armed, then trail it.   |
+//| Gated by InpEnableSL. Unified — every combo uses the same         |
+//| arm -> snapshot -> trail -> all-closed -> cleanup pipeline that   |
+//| used to be Style-C-only. No more separate "AB path"/"C path".    |
+//|                                                                    |
+//| Trigger: arms as soon as the leading side's basket profit > 0.   |
+//| ASSUMPTION (flagged for confirmation): the old InpSLTriggerByLot /|
+//| InpSLTriggerByProfit toggles were dropped per your instruction;  |
+//| "profit > 0" is the only trigger left, applied unconditionally   |
+//| whenever InpEnableSL is true. Tell me if you want this gated       |
+//| further and I'll add an input back.                              |
+//|                                                                    |
+//| SL PLACEMENT (Bug fix #5 applied — struct moved to file scope):  |
+//|   Candidates are grid lines stepping back from the winning side's|
+//|   most recent fill, in InpGridSpacing increments. Each candidate |
+//|   is tested with the same net-PnL-safe formula (entries, lots,  |
+//|   commission, spread, broker min-stop-distance). The largest n   |
+//|   for which the test still passes is maxValidN.                  |
+//|     SL_LAST_HIT_GRID : always n=1 (last hit's own grid line),    |
+//|                        no search beyond it.                      |
+//|     SL_N_BACK_GRID   : n = MIN(InpSLNBack, maxValidN) — depth-   |
+//|                        clamped to the farthest still-safe line.  |
+//|                                                                    |
+//| TRAILING (Bug fix #6 applied):                                    |
+//|   The full net-PnL search above is heavy (loops every position   |
+//|   per candidate) and only runs at arm time and whenever an armed |
+//|   winner CLOSES (position set changed, so the safe level might   |
+//|   change too). Per-tick trailing is a cheap, purely arithmetic   |
+//|   step: if price has advanced past the next grid line beyond the |
+//|   current SL, move the SL forward by one InpGridSpacing step —   |
+//|   no position loop, no PnL recompute.                            |
+//|                                                                    |
+//| RE-SNAPSHOT (per your instruction): the armed-winner ticket set   |
+//|   is re-captured on every new fill while armed (ReSnapshotIfArmed,|
+//|   called by the coordinator on every DEAL_ENTRY_IN), not just     |
+//|   once at arm time — closes the "new fill mid-epoch falls through |
+//|   the cracks" gap.                                                |
+//|                                                                    |
+//| BROKER FAULT (Bug 1.a): if ModifyPositionSL fails after its       |
+//|   internal retries, this immediately calls TriggerSafetyStop —   |
+//|   the same nuclear response as any other exhausted trade-call     |
+//|   failure, not a lighter cleanup.                                 |
+//+------------------------------------------------------------------+
+#ifndef SL_MANAGER_MQH
+#define SL_MANAGER_MQH
+
+#include "SLGridFeasibility.mqh"
+#include "../Inputs.mqh"
+#include "../Models/GridState.mqh"
+#include "../Utils/TradeUtils.mqh"
+#include "../Utils/MathUtils.mqh"
+#include "../Utils/DebugLogger.mqh"
+#include "../Utils/SafetyNet.mqh"
+
+//--- Struct at file scope (Bug fix #5 — MQL5 forbids struct-in-function)
+struct SLPosInfo
+  {
+   double entryPrice;
+   double lot;
+   int    type;
+  };
+
+//--- Armed-epoch winner ticket set — owned by this engine only
+ulong g_ArmedWinnerTickets[];
+
+//+------------------------------------------------------------------+
+//| Grid-line SL candidate search (Brick 6 core algorithm)            |
+//+------------------------------------------------------------------+
+double CalculateSLCandidate(GridState &state,
+                           ENUM_POSITION_TYPE winnerSide,
+                           int magicNumber,
+                           ENUM_SL_MODE mode)
+{
+   double slLevel = SL_FindCandidate(state, winnerSide, magicNumber, mode);
+   if(slLevel <= 0.0) return 0.0;
+
+   double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask     = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double minStop = MinStopDistancePrice(_Symbol);
+   double tick    = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double oldSL   = state.slLevel;
+
+   if(tick <= 0.0) return 0.0;
+
+   if(winnerSide == POSITION_TYPE_BUY)
+     {
+      slLevel = MathMin(slLevel, bid - minStop);
+      slLevel = NormalizeDouble(MathFloor(slLevel / tick) * tick, _Digits);
+
+      if(slLevel <= 0.0 || slLevel >= bid ||
+         slLevel > bid - minStop)
+         return 0.0;
+
+      if(oldSL > 0.0 && slLevel <= oldSL)
+         return 0.0;
+     }
+   else if(winnerSide == POSITION_TYPE_SELL)
+     {
+      slLevel = MathMax(slLevel, ask + minStop);
+      slLevel = NormalizeDouble(MathCeil(slLevel / tick) * tick, _Digits);
+
+      if(slLevel <= ask || slLevel < ask + minStop)
+         return 0.0;
+
+      if(oldSL > 0.0 && slLevel >= oldSL)
+         return 0.0;
+     }
+   else
+      return 0.0;
+
+   return slLevel;
+}
+//+------------------------------------------------------------------+
+//| Apply SL to every ticket in the armed-winner snapshot.            |
+//| Returns applied count, or -1 if a modify failed and a safety      |
+//| stop was triggered (caller must abort further processing).        |
+//+------------------------------------------------------------------+
+int ApplySLToWinners(double slLevel, GridState &state)
+{
+   int    count  = 0;
+
+   for(int i = 0; i < ArraySize(g_ArmedWinnerTickets); i++)
+     {
+      ulong t = g_ArmedWinnerTickets[i];
+      if(!PositionSelectByTicket(t)) continue; // already closed, skip
+
+      if(ModifyPositionSL(t, slLevel))
+         count++;
+     }
+   return count;
+}
+
+//+------------------------------------------------------------------+
+//| Snapshot every current winner-side position into the armed set.  |
+//| Applies to ALL positions on that side regardless of individual   |
+//| P/L (per design: SL applies to the whole winning-side basket).   |
+//+------------------------------------------------------------------+
+bool SnapshotWinners(GridState &state, ENUM_POSITION_TYPE winnerSide)
+{
+   int total = ArraySize(state.positionItems);
+
+   // Allocate once, then keep only winner-side tickets.
+   if(ArrayResize(g_ArmedWinnerTickets, total) != total)
+     {
+      ArrayFree(g_ArmedWinnerTickets);
+      return false;
+     }
+
+   int count = 0;
+
+   for(int i = 0; i < total; i++)
+     {
+      if(state.positionItems[i].side != winnerSide)
+         continue;
+
+      g_ArmedWinnerTickets[count] = state.positionItems[i].ticket;
+      count++;
+     }
+
+   ArrayResize(g_ArmedWinnerTickets, count);
+   return true;
+}
+//+------------------------------------------------------------------+
+//| Re-snapshot on every new fill while armed (closes the epoch gap).|
+//| Call from coordinator on every DEAL_ENTRY_IN.                    |
+//+------------------------------------------------------------------+
+void ReSnapshotIfArmed(GridState &state)
+{
+   if(!state.slWallArmed) return;
+   SnapshotWinners(state, (ENUM_POSITION_TYPE)state.slWinnerSide);
+}
+
+/*
+void ReSnapshotIfArmed_old(GridState &state)
+{
+   if(!state.slWallArmed) return;
+   SnapshotWinners(state.magicNumber, (ENUM_POSITION_TYPE)state.slWinnerSide);
+}*/
+//+------------------------------------------------------------------+
+//| True once every armed winner ticket has closed.                  |
+//+------------------------------------------------------------------+
+bool AllWinnersClosed()
+{
+   if(ArraySize(g_ArmedWinnerTickets) == 0) return false; // never armed / nothing to check
+   for(int i = 0; i < ArraySize(g_ArmedWinnerTickets); i++)
+      if(PositionSelectByTicket(g_ArmedWinnerTickets[i])) return false;
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Reset SL engine state — call after a cycle fully completes.      |
+//+------------------------------------------------------------------+
+void ResetSLManager(GridState &state)
+{
+   ArrayResize(g_ArmedWinnerTickets, 0);
+   state.slAllWinnersClosed = false;
+   state.slApplied = false;
+   state.slLevel = 0;
+   state.slWallArmed = false;
+   state.slWinnerSide = -1;
+}
+
+//+------------------------------------------------------------------+
+//| Arm the SL wall: compute initial safe level, snapshot, apply.    |
+//+------------------------------------------------------------------+
+void ArmSL(GridState &state)
+{
+   ENUM_POSITION_TYPE winnerSide = (state.lastHitDirection == ORDER_TYPE_BUY) ?
+                                   POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+   ENUM_POSITION_TYPE loserSide  = (winnerSide == POSITION_TYPE_BUY) ?
+                                   POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+   double slLevel = 0.0;
+   if (state.runawayTriggered)
+   slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpRunawaySLArmMode);
+   else
+   slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLArmMode);
+
+   if(slLevel <= 0) return; // not safe yet, try again next tick
+
+//   SnapshotWinners(state.magicNumber, winnerSide);
+   if(!SnapshotWinners(state, winnerSide))
+   return;
+   
+   if(ArraySize(g_ArmedWinnerTickets) == 0) return;
+
+   int applied = ApplySLToWinners(slLevel, state);
+   if(applied == 0)
+        {
+         TriggerSafetyStop(state, "SL_MODIFY_FAILED no position is armed");
+         return;
+        }
+   // Winner side is always frozen from here -- trailing owns it via
+   // g_ArmedWinnerTickets/the SL order itself, not this aggregate.
+   //if(winnerSide == POSITION_TYPE_BUY) { state.buyVolume = 0; state.buyAvgEntry = 0; }
+   //else                                { state.sellVolume = 0; state.sellAvgEntry = 0; }
+
+   state.slWallArmed  = true;
+   state.slApplied    = true;
+   state.slLevel      = slLevel;
+   state.slWinnerSide = (int)winnerSide;
+   LogSLTriggered("SL_ARMED", slLevel);
+}
+//+------------------------------------------------------------------+
+//| Cheap per-tick trail: step SL forward by one grid spacing when   |
+//| price has advanced past the next line. No position/PnL loop.    |
+//+------------------------------------------------------------------+
+void TrailWall(GridState &state)
+{
+   if(ArraySize(g_ArmedWinnerTickets) == 0)
+     {
+      ReSnapshotIfArmed(state);
+
+      if(ArraySize(g_ArmedWinnerTickets) == 0)
+        {
+         StartCleanupSequence(state);
+         return;
+        }
+     }
+
+   ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
+                  
+   double slLevel = 0.0;
+   if (state.runawayTriggered)
+   slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpRunawaySLTrailMode);
+   else
+   slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLTrailMode);
+
+   if(slLevel <= 0) return; // not safe yet, try again next tick
+
+   int applied = ApplySLToWinners(slLevel, state);
+   if(applied == 0)
+        {
+         TriggerSafetyStop(state, "SL_MODIFY_FAILED no position is trailed");
+         return;
+        }
+
+   state.slLevel = slLevel;
+   LogSLTriggered("SL_TRAILED", state.slLevel);
+}
+//+------------------------------------------------------------------+
+//| Master entry point. No-op unless InpEnableSL is true.            |
+//| Call every tick from coordinator.                                 |
+//+------------------------------------------------------------------+
+void ProcessSLManager(GridState &state)
+{
+   if(state.slWallArmed)
+     {
+      if(InpSLTrailMode != SL_NONE || state.runawayTriggered) TrailWall(state);
+      return;
+     }
+
+   if(InpSLArmMode == SL_NONE && !state.runawayTriggered) return;
+   
+   NetBasketAtPrice(state);
+      
+   if(state.basketNetProfit <= 0 && !state.runawayTriggered) return;
+
+   ArmSL(state);
+}
+#endif

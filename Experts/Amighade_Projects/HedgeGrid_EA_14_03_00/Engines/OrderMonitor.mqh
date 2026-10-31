@@ -11,7 +11,6 @@
 //+------------------------------------------------------------------+
 #ifndef ORDER_MONITOR_MQH
 #define ORDER_MONITOR_MQH
-#include "../Utils/TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -77,9 +76,8 @@ ulong CheckGapFault(double currentPrice, int magicNumber, double &expectedPrice)
 //| arm ONLY when InpCloseLosersAtArm is false (losers deliberately   |
 //| left open) so SL_FindCandidate's net-check still sees them.       |
 //+------------------------------------------------------------------+
-bool UpdateSideVolumeAggregate(GridState &state, ulong dealTicket)
+bool UpdateSideVolumeAggregate_old(GridState &state, ulong dealTicket)
 {
-   CTimeGaugeScope timeGauge(GAUGE_UPDATESIDEVOLUMEAGGREGATE);
    if(!HistoryDealSelect(dealTicket))
       return false;
 
@@ -224,7 +222,7 @@ bool UpdateSideVolumeAggregate(GridState &state, ulong dealTicket)
 }
 
 
-void UpdateSideVolumeAggregate_old(GridState &state, ENUM_DEAL_TYPE dealType,
+void UpdateSideVolumeAggregate(GridState &state, ENUM_DEAL_TYPE dealType,
                                ENUM_DEAL_ENTRY dealEntry, double lot, double price)
 {
    bool isOpen = (dealEntry == DEAL_ENTRY_IN);
@@ -271,19 +269,19 @@ void UpdateSideVolumeAggregate_old(GridState &state, ENUM_DEAL_TYPE dealType,
 //| Updates GridState with hit info, pass counter, and farthest-hit  |
 //| tracking. Returns true if this was a direction switch.           |
 //+------------------------------------------------------------------+
-bool ProcessOrderFill(ulong positionTicket, GridState &state)
+bool ProcessOrderFill(ulong positionTicket, ENUM_DEAL_TYPE dealType,
+                      double lot, double fillPrice, GridState &state)
   {
-   CTimeGaugeScope timeGauge(GAUGE_PROCESSORDERFILL);
-   if(!PositionSelectByTicket(positionTicket)) return false;
-   if(PositionGetString(POSITION_SYMBOL) != _Symbol) return false;
-   if(PositionGetInteger(POSITION_MAGIC) != state.magicNumber) return false;
+   if(dealType != DEAL_TYPE_BUY && dealType != DEAL_TYPE_SELL)
+      return false;
+   if(positionTicket == 0 || lot <= 0.0 || fillPrice <= 0.0)
+      return false;
 
-   ENUM_POSITION_TYPE posType   = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-   double             lot       = PositionGetDouble(POSITION_VOLUME);
-   double             fillPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+   ENUM_POSITION_TYPE posType = (dealType == DEAL_TYPE_BUY)
+                                ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
 
-   ENUM_ORDER_TYPE hitDirection = (posType == POSITION_TYPE_BUY) ?
-                                   ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   ENUM_ORDER_TYPE hitDirection = (dealType == DEAL_TYPE_BUY)
+                                 ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
 
    bool switched = IsDirectionSwitch(hitDirection, state);
 
@@ -320,6 +318,15 @@ bool ProcessOrderFill(ulong positionTicket, GridState &state)
    if(!state.cycleActive)
       state.cycleActive = true;
 
+   if(hitDirection == state.runawayStreakDirection)
+      state.runawayStreakCount++;
+   else
+     {
+      state.runawayStreakDirection = hitDirection;
+      state.runawayStreakCount = 1;
+      state.runawayTriggered = false;
+     }
+     
    LogOrderFilled(positionTicket,
                   posType == POSITION_TYPE_BUY ? "BUY" : "SELL",
                   lot, fillPrice);

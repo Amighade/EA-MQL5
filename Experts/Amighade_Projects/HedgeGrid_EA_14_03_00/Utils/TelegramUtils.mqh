@@ -7,7 +7,6 @@
 //+------------------------------------------------------------------+
 #ifndef TELEGRAM_UTILS_MQH
 #define TELEGRAM_UTILS_MQH
-#include "TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 
@@ -91,7 +90,6 @@ string UrlEncode(string str)
 //+------------------------------------------------------------------+
 void SendTelegramMessage(string text)
   {
-   CTimeGaugeScope timeGauge(GAUGE_SENDTELEGRAMMESSAGE);
    if(!InpEnableTelegramAlerts) return;
 
    if(topic_id == "")

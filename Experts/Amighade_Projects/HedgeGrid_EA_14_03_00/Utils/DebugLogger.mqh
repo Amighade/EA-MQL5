@@ -20,11 +20,11 @@ void LogDebug(string message)
 //+------------------------------------------------------------------+
 //| Log grid built event                                              |
 //+------------------------------------------------------------------+
-void LogGridBuilt(double anchorBuy, double anchorSell, string lotMode)
+void LogGridBuilt(double anchorBuy, double anchorSell)
   {
    if(!InpEnableDebugLog) return;
-   PrintFormat("[HedgeGrid][GRID_BUILT] BuyAnchor=%.2f SellAnchor=%.2f LotMode=%s",
-               anchorBuy, anchorSell, lotMode);
+   PrintFormat("[HedgeGrid][GRID_BUILT] BuyAnchor=%.2f SellAnchor=%.2f",
+               anchorBuy, anchorSell);
   }
 
 //+------------------------------------------------------------------+

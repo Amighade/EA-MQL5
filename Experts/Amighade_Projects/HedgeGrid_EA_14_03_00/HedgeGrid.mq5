@@ -78,8 +78,34 @@ int OnInit()
          LogDebug("[Init] Preserve reason but no valid saved state found — fresh start.");
      }
    
+      // Record this EA's positions already open at startup.
+   ArrayFree(g_state.ownedPositionIds);
+
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      if(PositionGetTicket(i) == 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != g_state.magicNumber)
+         continue;
+
+      long positionId = 0;
+      int size = ArraySize(g_state.ownedPositionIds);
+
+      if(!PositionGetInteger(POSITION_IDENTIFIER, positionId) ||
+         positionId <= 0 ||
+         ArrayResize(g_state.ownedPositionIds, size + 1, 16) != size + 1)
+        {
+         g_transactionQueueFailed = true;
+         break;
+        }
+
+      g_state.ownedPositionIds[size] = (ulong)positionId;
+     }
+   
+   if(!g_state.cleanupInProgress)
+   ReSnapshotIfArmed(g_state);
+   
    g_state.sessionAllowed = IsSessionAllowed();
-   g_state.lotMode        = CheckMargin(g_state);
    uint initTick = GetTickCount();
    g_state.g_lastTime_50ms = initTick;
    g_state.g_lastTime_500ms = initTick;
@@ -104,8 +130,15 @@ int OnInit()
      }
 
    LogDebug(StringFormat("HedgeGrid started. Magic=%d LotMode=%s. Grid builds when timer checks allow it.",
-                         g_state.magicNumber,
-                         g_state.lotMode==LOT_FULL?"FULL":"HALF"));
+                         g_state.magicNumber));
+                         
+   PrintFormat(
+      "[SYMBOL DATA] symbol=%s tickValue=%.10f tickSize=%.10f accountCurrency=%s",
+      _Symbol,
+      SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE),
+      SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE),
+      AccountInfoString(ACCOUNT_CURRENCY));
+   
    return INIT_SUCCEEDED;
 }
 
@@ -146,7 +179,6 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 void OnTimer()
 {
    RunScheduler(g_state);
-   TimeGaugeReport();
 }
 
 //+------------------------------------------------------------------+
@@ -163,27 +195,6 @@ void OnTimer()
 void OnChartEvent(const int id, const long &lparam,
                   const double &dparam, const string &sparam)
 {
-   // Ctrl+Shift+Q works independently of the dashboard; one command per press.
-   static bool emergencyKeyHeld = false;
-   if(id == CHARTEVENT_KEYUP && lparam == 81)
-   {
-      emergencyKeyHeld = false;
-      return;
-   }
-   if(id == CHARTEVENT_KEYDOWN && lparam == 81)
-   {
-      if(emergencyKeyHeld) return;
-      emergencyKeyHeld = true;
-      bool ctrl = (TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL) & 0x8000) != 0;
-      bool shift = (TerminalInfoInteger(TERMINAL_KEYSTATE_SHIFT) & 0x8000) != 0;
-      if(ctrl && shift)
-      {
-         g_emergencyCloseRequested = true;
-         Print("[Emergency] Ctrl+Shift+Q: close queued for the next timer pass.");
-      }
-      return;
-   }
-
    if(!InpShowDashboard) return;
    if(!HandleChartEvent(id, lparam, dparam, sparam)) return;
 

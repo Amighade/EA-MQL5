@@ -7,7 +7,6 @@
 //+------------------------------------------------------------------+
 #ifndef HISTORY_LOGGER_MQH
 #define HISTORY_LOGGER_MQH
-#include "TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 
@@ -95,7 +94,6 @@ void LogHistory(string eventType,
                 double marginFree,
                 string notes = "")
   {
-   CTimeGaugeScope timeGauge(GAUGE_LOGHISTORY);
    if(!InpEnableHistoryLog) return;
 
    string today = TimeToString(TimeCurrent(), TIME_DATE);

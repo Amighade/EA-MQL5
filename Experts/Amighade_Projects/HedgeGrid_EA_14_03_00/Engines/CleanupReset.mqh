@@ -16,7 +16,6 @@
 //+------------------------------------------------------------------+
 #ifndef CLEANUP_RESET_MQH
 #define CLEANUP_RESET_MQH
-#include "../Utils/TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -46,7 +45,6 @@ void ResetCycle(GridState &state)
 //+------------------------------------------------------------------+
 void ExecuteEmergencyClose(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_EXECUTEEMERGENCYCLOSE);
    TriggerSafetyStop(state, "EMERGENCY_CLOSE");
 }
 
@@ -55,7 +53,6 @@ void ExecuteEmergencyClose(GridState &state)
 //+------------------------------------------------------------------+
 void StartCleanupSequence(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_STARTCLEANUPSEQUENCE);
    g_cleanupAdvancePending = false;
 
    // Order deletion moved to ExecuteNextCloseStep's completion branch —
@@ -74,7 +71,6 @@ void StartCleanupSequence(GridState &state)
 //+------------------------------------------------------------------+
 bool ExecuteNextCloseStep(GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_EXECUTENEXTCLOSESTEP);
    if(!state.cleanupInProgress) return true;
 
    // Skip any ticket that closed externally (SL/TP/manual) since the array was built

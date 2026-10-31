@@ -4,7 +4,6 @@
 //+------------------------------------------------------------------+
 #ifndef MARGIN_CHECK_MQH
 #define MARGIN_CHECK_MQH
-#include "../Utils/TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -31,15 +30,14 @@ double GetMarginForLot(double lot)
 //+------------------------------------------------------------------+
 //| Calculate total margin required for full grid (both sides)       |
 //+------------------------------------------------------------------+
-double GetRequiredMargin(ENUM_LOT_MODE lotMode)
+double GetRequiredMargin()
 {
-   CTimeGaugeScope timeGauge(GAUGE_GETREQUIREDMARGIN);
-   int    levels      = GetMaxLevels(lotMode);
+   int    levels      = GetMaxLevels();
    double totalMargin = 0.0;
 
    for(int i = 1; i <= levels; i++)
      {
-      double lot = GetLot(i, lotMode);
+      double lot = GetLot(i);
       // Both BUY and SELL sides
       totalMargin += GetMarginForLot(lot) * 2;
      }
@@ -52,8 +50,8 @@ double GetRequiredMargin(ENUM_LOT_MODE lotMode)
 ENUM_LOT_MODE CheckMargin(GridState &state)
 {
    double freeMargin   = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
-   double requiredFull = GetRequiredMargin(LOT_FULL);
-   double requiredHalf = GetRequiredMargin(LOT_HALF);
+   double requiredFull = GetRequiredMargin();
+   double requiredHalf = GetRequiredMargin();
 
    // Below absolute minimum — block EA
    if(freeMargin < InpMinAllowedMargin)

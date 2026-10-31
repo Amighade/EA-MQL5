@@ -18,17 +18,18 @@
 //+------------------------------------------------------------------+
 //| Get max levels for current lot mode (margin fallback halves it)  |
 //+------------------------------------------------------------------+
-int GetMaxLevels(ENUM_LOT_MODE lotMode)
+int GetMaxLevels()//ENUM_LOT_MODE lotMode)
   {
-   int configuredLevels = MathMax(1, MathMin(InpInitialGridLevels, 3));
-   return (lotMode == LOT_FULL) ? configuredLevels : MathMax(1, configuredLevels / 2);
+   //int configuredLevels = MathMax(1, MathMin(InpInitialGridLevels, 3));
+   //return (lotMode == LOT_FULL) ? configuredLevels : MathMax(1, configuredLevels / 2);
+   return InpInitialGridLevels;
   }
 
 //+------------------------------------------------------------------+
 //| Ladder lot sizing                                                 |
 //| level: 1-based grid level (1 = nearest to price)                 |
 //+------------------------------------------------------------------+
-double GetLot_Ladder(int level, ENUM_LOT_MODE lotMode)
+double GetLot_Ladder(int level)
   {
    double lot = InpFixedLot + (InpInitialLotStep * (level - 1));
    lot = MathMin(lot, InpInitialLotCap); // Cap at maximum
@@ -40,7 +41,7 @@ double GetLot_Ladder(int level, ENUM_LOT_MODE lotMode)
 //| Ladder exponential lot sizing                                                 |
 //| level: 1-based grid level (1 = nearest to price)                 |
 //+------------------------------------------------------------------+
-double GetLot_EXP(int level, ENUM_LOT_MODE lotMode)
+double GetLot_EXP(int level)
   {
    double lot = InpFixedLot + InpInitialLotStep * MathPow(level - 1, 1.5);
    lot = MathMin(lot, InpInitialLotCap); // Cap at maximum
@@ -50,7 +51,7 @@ double GetLot_EXP(int level, ENUM_LOT_MODE lotMode)
 //+------------------------------------------------------------------+
 //| Fixed lot sizing — all levels use the same lot                   |
 //+------------------------------------------------------------------+
-double GetLot_Fixed(int level, ENUM_LOT_MODE lotMode)
+double GetLot_Fixed(int level)
   {
    return AlignVolume(_Symbol, InpFixedLot);
   }
@@ -59,14 +60,14 @@ double GetLot_Fixed(int level, ENUM_LOT_MODE lotMode)
 //| Master function — the ONLY function engines should call for      |
 //| initial-build lot sizing. Mode selected via InpInitialSizing.    |
 //+------------------------------------------------------------------+
-double GetLot(int level, ENUM_LOT_MODE lotMode)
+double GetLot(int level)
   {
    switch(InpInitialSizing)
      {
-      case SIZING_LADDER: return GetLot_Ladder(level, lotMode);
-      case SIZING_FIXED:  return GetLot_Fixed(level, lotMode);
-      case SIZING_EXP:  return GetLot_EXP(level, lotMode);
-      default:             return GetLot_Fixed(level, lotMode);
+      case SIZING_LADDER: return GetLot_Ladder(level);
+      case SIZING_FIXED:  return GetLot_Fixed(level);
+      case SIZING_EXP:  return GetLot_EXP(level);
+      default:             return GetLot_Fixed(level);
      }
   }
 
