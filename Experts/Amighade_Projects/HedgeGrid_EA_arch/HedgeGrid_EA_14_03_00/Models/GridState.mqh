@@ -17,8 +17,7 @@ struct GridState
    bool           cycleActive;
    bool           gridPlaced;
    int            passCounter;       // used by Brick 1 (lot increase mode A)
-   ENUM_LOT_MODE  lotMode;
-   bool needsGridVerification;
+//   bool needsGridVerification;
 
    //--- Grid anchors
    double         anchorBuy;
@@ -28,11 +27,14 @@ struct GridState
    ENUM_ORDER_TYPE lastHitDirection;
    ENUM_ORDER_TYPE prevHitDirection;
    double          lastHitLot;
+   double          buyRequiredLot;
+   double          sellRequiredLot;
    double          lastHitPrice;
    double          prevHitPrice;
    datetime        lastHitTime;
    ulong           lastHitTicket;
-
+   ulong           ownedPositionIds[];
+   
    //--- Farthest hit tracking (Brick 2: SHIFT_FARTHEST_HIT)
    double         farthestHitBuy;    // farthest (highest) BUY fill price this cycle
    double         farthestHitSell;   // farthest (lowest) SELL fill price this cycle
@@ -101,6 +103,10 @@ struct GridState
    uint           g_lastTime_2000ms;
    uint           g_lastTime_60000ms;
    
+   int             runawayStreakCount;
+   ENUM_ORDER_TYPE runawayStreakDirection;
+   bool            runawayTriggered;
+   
   };
 
 void ResetGridState(GridState &state)
@@ -108,16 +114,18 @@ void ResetGridState(GridState &state)
    state.cycleActive        = false;
    state.gridPlaced         = false;
    state.passCounter        = 0;
-   state.lotMode            = LOT_FULL;
    state.anchorBuy          = 0.0;
    state.anchorSell         = 0.0;
    state.lastHitDirection   = WRONG_VALUE;
    state.prevHitDirection   = WRONG_VALUE;
    state.lastHitLot         = 0.0;
+   state.buyRequiredLot     = 0.0;
+   state.sellRequiredLot    = 0.0;
    state.lastHitPrice       = 0.0;
    state.prevHitPrice       = 0.0;
    state.lastHitTime        = 0;
    state.lastHitTicket      = 0;
+   ArrayFree(state.ownedPositionIds);   
    state.farthestHitBuy     = 0.0;
    state.farthestHitSell    = 0.0;
    state.currentBlockLot    = 0.0;
@@ -153,7 +161,10 @@ void ResetGridState(GridState &state)
    state.g_lastTime_500ms = 0;
    state.g_lastTime_2000ms = 0;
    state.g_lastTime_60000ms = 0;
-   state.needsGridVerification = false;
+   state.runawayStreakCount = 0;
+   state.runawayStreakDirection = (ENUM_ORDER_TYPE)WRONG_VALUE;
+   state.runawayTriggered = false;
+//   state.needsGridVerification = false;
    // lastBarGridCheck / lastBarRecenter NOT reset — candle trackers persist across cycles
    // magicNumber NOT reset — set once in OnInit
   }

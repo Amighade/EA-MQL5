@@ -15,7 +15,7 @@
 //|   - Grid building is checked by the medium timer task, not OnInit. |
 //+------------------------------------------------------------------+
 #property copyright "HedgeGrid EA"
-#property version   "14.030"
+#property version   "14.052"
 #property strict
 
 #include "Inputs.mqh"
@@ -80,10 +80,20 @@ int OnInit()
    
       // Record this EA's positions already open at startup.
    ArrayFree(g_state.ownedPositionIds);
+   ArrayFree(g_state.positionItems);
+
+   g_state.sellpositionCount       = 0;
+   g_state.buypositionCount        = 0;
+   g_state.positionCount           = 0;
+   g_state.lowestSellPositionPrice = DBL_MAX;
+   g_state.lowestSellPositionLot   = 0.0;
+   g_state.highestBuyPositionPrice = 0.0;
+   g_state.highestBuyPositionLot   = 0.0;
 
    for(int i = 0; i < PositionsTotal(); i++)
      {
-      if(PositionGetTicket(i) == 0) continue;
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
       if(PositionGetInteger(POSITION_MAGIC) != g_state.magicNumber)
          continue;
@@ -100,6 +110,49 @@ int OnInit()
         }
 
       g_state.ownedPositionIds[size] = (ulong)positionId;
+      
+      int index = ArraySize(g_state.positionItems);
+      if(ArrayResize(g_state.positionItems, index + 1, 16) != index + 1)
+        {
+         g_transactionQueueFailed = true;
+         break;
+        }
+      
+      g_state.positionItems[index].identifier = (ulong)positionId;
+      g_state.positionItems[index].ticket     = ticket;
+      g_state.positionItems[index].side       =
+         (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      g_state.positionItems[index].entryPrice =
+         PositionGetDouble(POSITION_PRICE_OPEN);
+      g_state.positionItems[index].volume     =
+         PositionGetDouble(POSITION_VOLUME);
+         
+      g_state.positionCount++;
+
+      ENUM_POSITION_TYPE type = g_state.positionItems[index].side;
+      double p   = g_state.positionItems[index].entryPrice;
+      double lot = g_state.positionItems[index].volume;
+      
+      if(type == POSITION_TYPE_SELL)
+        {
+         g_state.sellpositionCount++;
+      
+         if(p < g_state.lowestSellPositionPrice)
+           {
+            g_state.lowestSellPositionPrice = p;
+            g_state.lowestSellPositionLot   = lot;
+           }
+        }
+      else if(type == POSITION_TYPE_BUY)
+        {
+         g_state.buypositionCount++;
+      
+         if(p > g_state.highestBuyPositionPrice)
+           {
+            g_state.highestBuyPositionPrice = p;
+            g_state.highestBuyPositionLot   = lot;
+           }
+        }
      }
    
    if(!g_state.cleanupInProgress)
@@ -151,7 +204,7 @@ void OnDeinit(const int reason)
    DeinitHistoryLogger();
    EventKillTimer();
    LogDebug(StringFormat("HedgeGrid stopped. Reason=%d", reason));
-   
+
    if(reason == REASON_REMOVE || reason == REASON_TEMPLATE ||
       reason == REASON_PROGRAM || reason == REASON_INITFAILED)
    { ExecuteEmergencyClose(g_state); ResetSLManager(g_state); }

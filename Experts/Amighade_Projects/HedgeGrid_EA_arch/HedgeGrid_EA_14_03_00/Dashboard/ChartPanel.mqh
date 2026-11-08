@@ -5,7 +5,6 @@
 //+------------------------------------------------------------------+
 #ifndef CHART_PANEL_MQH
 #define CHART_PANEL_MQH
-#include "../Utils/TimeGauge.mqh"
 
 #include "../Inputs.mqh"
 #include "../Models/GridState.mqh"
@@ -170,7 +169,6 @@ void InitDashboard()
 //+------------------------------------------------------------------+
 void UpdateDashboard(const GridState &state)
 {
-   CTimeGaugeScope timeGauge(GAUGE_UPDATEDASHBOARD);
    if(!InpShowDashboard) return;
 
    int vx = g_panelX + 300;
@@ -178,10 +176,10 @@ void UpdateDashboard(const GridState &state)
 
    #define RY(i) (py + 16 + (i)*ROW_H + 2)
 
-   HG_UpdateVal(PANEL_PREFIX "V1",  state.cycleActive?"YES":"NO",                       state.cycleActive?clrOrange:clrMagenta,           vx, RY(0));
+   HG_UpdateVal(PANEL_PREFIX "V1",  state.cycleActive?"YES":"NO",                       state.cycleActive?clrOrange:clrMagenta,            vx, RY(0));
    HG_UpdateVal(PANEL_PREFIX "V2",  state.gridPlaced?"YES":"NO",                        state.gridPlaced?clrOrange:clrMagenta,             vx, RY(1));
    HG_UpdateVal(PANEL_PREFIX "V3",  IntegerToString(state.passCounter),                 clrAqua,                                           vx, RY(2));
-   HG_UpdateVal(PANEL_PREFIX "V4",  state.lotMode==LOT_FULL?"FULL":"HALF",              state.lotMode==LOT_FULL?clrLime:clrOrange,         vx, RY(3));
+   HG_UpdateVal(PANEL_PREFIX "V4",  "FULL",                                             clrLime,                                           vx, RY(3));
    HG_UpdateVal(PANEL_PREFIX "V5",  DoubleToString(state.anchorBuy,2),                  clrAqua,                                           vx, RY(4));
    HG_UpdateVal(PANEL_PREFIX "V6",  DoubleToString(state.anchorSell,2),                 clrAqua,                                           vx, RY(5));
    HG_UpdateVal(PANEL_PREFIX "V7",  state.lastHitDirection==ORDER_TYPE_BUY?"BUY":"SELL",state.lastHitDirection==ORDER_TYPE_BUY?clrLime:clrMagenta, vx, RY(6));

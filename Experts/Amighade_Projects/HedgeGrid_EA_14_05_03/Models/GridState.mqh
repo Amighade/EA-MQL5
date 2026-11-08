@@ -10,6 +10,23 @@ enum EA_MODE
    MODE_SHUTDOWN
 };
 
+struct PositionSnapshotItem
+{
+   ulong identifier;
+   ulong ticket;
+   ENUM_POSITION_TYPE side;
+   double entryPrice;
+   double volume;
+};
+
+struct OrderSnapshotItem
+{
+   ulong ticket;
+   ENUM_ORDER_TYPE type;
+   double entryPrice;
+   double volume;
+};
+
 struct GridState
   {
    bool           outsideRefillPending;
@@ -34,6 +51,8 @@ struct GridState
    datetime        lastHitTime;
    ulong           lastHitTicket;
    ulong           ownedPositionIds[];
+   PositionSnapshotItem positionItems[];
+   OrderSnapshotItem    orderItems[];
    
    //--- Farthest hit tracking (Brick 2: SHIFT_FARTHEST_HIT)
    double         farthestHitBuy;    // farthest (highest) BUY fill price this cycle
@@ -107,6 +126,14 @@ struct GridState
    ENUM_ORDER_TYPE runawayStreakDirection;
    bool            runawayTriggered;
    
+   int            sellpositionCount;
+   int            buypositionCount;
+   int            positionCount;
+   double         lowestSellPositionPrice;
+   double         lowestSellPositionLot;
+   double         highestBuyPositionPrice;
+   double         highestBuyPositionLot;
+   
   };
 
 void ResetGridState(GridState &state)
@@ -156,7 +183,7 @@ void ResetGridState(GridState &state)
    ArrayResize(state.levelBaseLot, 0);
    ArrayResize(state.runLevels, 0);
    ArrayResize(state.closeSequence, 0);
-   state.closeIndex = 0;
+   state.closeIndex = -1;
    state.g_lastTime_50ms = 0;
    state.g_lastTime_500ms = 0;
    state.g_lastTime_2000ms = 0;
@@ -164,6 +191,15 @@ void ResetGridState(GridState &state)
    state.runawayStreakCount = 0;
    state.runawayStreakDirection = (ENUM_ORDER_TYPE)WRONG_VALUE;
    state.runawayTriggered = false;
+   ArrayFree(state.positionItems);
+   ArrayFree(state.orderItems);
+   state.sellpositionCount          = 0;
+   state.buypositionCount           = 0;
+   state.positionCount             = 0;
+   state.lowestSellPositionPrice   = DBL_MAX;
+   state.lowestSellPositionLot     = 0.0;
+   state.highestBuyPositionPrice   = 0.0;
+   state.highestBuyPositionLot     = 0.0;
 //   state.needsGridVerification = false;
    // lastBarGridCheck / lastBarRecenter NOT reset — candle trackers persist across cycles
    // magicNumber NOT reset — set once in OnInit

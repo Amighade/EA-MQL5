@@ -47,10 +47,12 @@ enum ENUM_SHIFT_ANCHOR
 enum ENUM_SL_MODE
   {
    SL_NONE           = 0,  // No SL
-   SL_P_LEVEL        = 1,  // SL = FIRST POSITIVE LEVEL (no grid)
-   SL_FIRST_GRID        = 2,  // SL = NEAREST GRID (no net check) 
-   SL_NEAREST_P_GRID  = 3,  // SL = AUTO SEARCH (nearest-first valid wins)
-   SL_FAREST_P_GRID    = 4,  // SL = AUTO SEARCH (farthest-first valid wins)
+   SL_FIRST_LEVEL    = 1,  // SL = FIRST POSITIVE LEVEL (no grid)
+   SL_P_LEVEL        = 2,  // SL = POSITIVE LEVEL (no grid)
+   SL_FIRST_GRID     = 3,  // SL = FIRST GRID (no net check)
+   SL_N_GRID         = 4,  // SL = N GRID (no net check)
+   SL_NEAREST_P_GRID = 5,  // SL = AUTO SEARCH (nearest-first valid wins)
+   SL_FAREST_P_GRID  = 6,  // SL = AUTO SEARCH (farthest-first valid wins)
   };
 
 enum ENUM_LOT_MODE
@@ -103,47 +105,27 @@ enum ENUM_FIRST_LEVEL_SL_MODE
    FIRST_SL_RANGE_FRAC   = 4    // entry ± (prev-bar range × InpFirstSLRangeFraction)
    };
 
-enum ENUM_RUNAWAY_SL_MODE
-   {
-   RA_SL_NONE         = 0,   // no SL on runaway
-   RA_SL_TIGHT        = 1,   // entry ± (spread + minStop) — broker-minimum distance
-   RA_SL_GRID_SPACING = 2,   // entry ± (InpGridSpacing * InpFirstSLRangeFraction)
-   RA_SL_GAP_FRAC     = 3   // entry ± (InpInitialGap * InpFirstSLRangeFraction)
-   };
-
-enum ENUM_RUNAWAY_TRIGGER
-  {
-   RUNAWAY_TRIGGER_CONSECUTIVE = 0,
-   RUNAWAY_TRIGGER_GRID_DEPTH  = 1,
-   RUNAWAY_TRIGGER_PASSCOUNTER = 2
-  };
-
-enum ENUM_RUNAWAY_ACTION
-   {
-   RUNAWAY_ACTION_ADD_SL    = 0,
-   RUNAWAY_ACTION_CLOSE_ALL = 1
-   };
-
 //double InpCommissionPerLot = 0.0;
 //+------------------------------------------------------------------+
 //| INPUT PARAMETERS                                                  |
 //+------------------------------------------------------------------+
 
 input ENUM_TIMEFRAMES Timeframe        = (ENUM_TIMEFRAMES)0;
-input ENUM_GRID_ANCHOR_MODE InpGridAnchorMode = ANCHOR_CURRENT_PRICE;
-input ENUM_FIRST_LEVEL_SL_MODE InpFirstLevelSLMode  = FIRST_SL_NONE;
-input double                   InpFirstSLRangeFraction = 1;
 
-input ENUM_RUNAWAY_SL_MODE    InpRunawaySLMode  = RA_SL_NONE;
-input double                   InpRunawaySLRangeFraction = 1;
-input ENUM_RUNAWAY_TRIGGER InpRunawayTrigger = RUNAWAY_TRIGGER_PASSCOUNTER;
-input ENUM_RUNAWAY_ACTION  InpRunawayAction  = RUNAWAY_ACTION_ADD_SL;
-input int                  InpRunawayN = 3;
+input ENUM_GRID_ANCHOR_MODE      InpGridAnchorMode = ANCHOR_CURRENT_PRICE;
+
+input ENUM_FIRST_LEVEL_SL_MODE   InpFirstLevelSLMode  = FIRST_SL_NONE;
+input double                     InpFirstSLRangeFraction = 1;
+
+input ENUM_SL_MODE   InpRunawaySLArmMode  = SL_NONE;
+input ENUM_SL_MODE   InpRunawaySLTrailMode  = SL_NONE;
+input double         N_GRID = 1;
+input int            InpRunawayN = 3;
 
 //--- BRICK 6: SL (breakeven-lock) ---------------------------------------
-input ENUM_SL_MODE InpSLArmMode   = SL_FIRST_GRID;      // SL mode used when first arming
-input ENUM_SL_MODE InpSLTrailMode = SL_NEAREST_P_GRID;      // SL mode used when trailing an already-armed SL
-input int    InpSLNBack            = 1;        // SL_N_BACK_GRID only: steps back from last hit (1 = last hit's own level)
+input ENUM_SL_MODE   InpSLArmMode   = SL_FIRST_LEVEL;      // SL mode used when first arming
+input ENUM_SL_MODE   InpSLTrailMode = SL_NEAREST_P_GRID;      // SL mode used when trailing an already-armed SL
+input int            InpSLNBack     = 1;        // SL_N_BACK_GRID only: steps back from last hit (1 = last hit's own level)
 
 //--- Grid Settings (core, always active)
 input double InpInitialGap    = 2.00;  // Gap between nearest BUY and SELL ($)
