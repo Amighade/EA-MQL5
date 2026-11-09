@@ -47,12 +47,12 @@ enum ENUM_SHIFT_ANCHOR
 enum ENUM_SL_MODE
   {
    SL_NONE           = 0,  // No SL
-   SL_FIRST_LEVEL    = 1,  // SL = FIRST POSITIVE LEVEL (no grid)
-   SL_P_LEVEL        = 2,  // SL = POSITIVE LEVEL (no grid)
-   SL_FIRST_GRID     = 3,  // SL = FIRST GRID (no net check)
-   SL_N_GRID         = 4,  // SL = N GRID (no net check)
-   SL_NEAREST_P_GRID = 5,  // SL = AUTO SEARCH (nearest-first valid wins)
-   SL_FAREST_P_GRID  = 6,  // SL = AUTO SEARCH (farthest-first valid wins)
+   SL_P_LEVEL        = 1,  // SL = FIRST POSITIVE LEVEL (no grid)
+   SL_FIRST_GRID     = 2,  // SL = FIRST GRID (no net check)
+   SL_N_GRID         = 3,  // SL = N GRID (no net check)
+   SL_NEAREST_P_GRID = 4,  // SL = AUTO SEARCH (nearest-first valid wins)
+   SL_FAREST_P_GRID  = 5,  // SL = AUTO SEARCH (farthest-first valid wins)
+   SL_F_LEVEL        = 6,  // SL = FIRST LEVEL
   };
 
 enum ENUM_LOT_MODE
@@ -123,7 +123,7 @@ input double         N_GRID = 1;
 input int            InpRunawayN = 3;
 
 //--- BRICK 6: SL (breakeven-lock) ---------------------------------------
-input ENUM_SL_MODE   InpSLArmMode   = SL_FIRST_LEVEL;      // SL mode used when first arming
+input ENUM_SL_MODE   InpSLArmMode   = SL_FIRST_GRID;      // SL mode used when first arming
 input ENUM_SL_MODE   InpSLTrailMode = SL_NEAREST_P_GRID;      // SL mode used when trailing an already-armed SL
 input int            InpSLNBack     = 1;        // SL_N_BACK_GRID only: steps back from last hit (1 = last hit's own level)
 

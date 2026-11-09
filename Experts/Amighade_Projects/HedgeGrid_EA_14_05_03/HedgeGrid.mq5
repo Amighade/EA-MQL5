@@ -15,7 +15,7 @@
 //|   - Grid building is checked by the medium timer task, not OnInit. |
 //+------------------------------------------------------------------+
 #property copyright "HedgeGrid EA"
-#property version   "14.052"
+#property version   "14.053"
 #property strict
 
 #include "Inputs.mqh"

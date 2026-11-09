@@ -156,21 +156,9 @@ double SL_FindCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide,
    //====================================================
    // MODE 1: no grid — nearest broker-legal level
    //====================================================
-   if(mode == SL_FIRST_LEVEL)
-     {
-      double candidate = (winnerSide == POSITION_TYPE_BUY) ? (bid - minStop) : (ask + minStop);
-
-      return candidate;
-     }
-
-   //====================================================
-   // MODE 2: no grid — nearest broker-legal level
-   //====================================================
    if(mode == SL_P_LEVEL)
      {
       double candidate = (winnerSide == POSITION_TYPE_BUY) ? (bid - minStop) : (ask + minStop);
-//      if(!SL_IsProgress(winnerSide, candidate, currentSL)) return 0;
-//      if(!SL_BrokerOK(winnerSide, candidate)) return 0;
 
       double profit = 0;
       double netProfit = 0;
@@ -179,8 +167,9 @@ double SL_FindCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide,
       if(netProfit <= 0) return 0;
       return candidate;
      }
+
    //====================================================
-   // MODE 3: nearest grid line
+   // MODE 2: nearest grid line
    //====================================================
    if(mode == SL_FIRST_GRID)
      {
@@ -188,7 +177,7 @@ double SL_FindCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide,
      }
      
    //====================================================
-   // MODE 4: nearest grid line
+   // MODE 3: nearest grid line
    //====================================================
    if(mode == SL_N_GRID)
      {
@@ -197,16 +186,25 @@ double SL_FindCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide,
      }
 
    //====================================================
-   // MODE 5: N GRID AUTO SEARCH (nearest-first valid wins)
+   // MODE 4: N GRID AUTO SEARCH (nearest-first valid wins)
    //====================================================
    if(mode == SL_NEAREST_P_GRID)
       return SL_SearchGridLevels(state, anchor, winnerSide, currentSL, true);
 
    //====================================================
-   // MODE 6: N GRID AUTO SEARCH (farthest-first valid wins)
+   // MODE 5: N GRID AUTO SEARCH (farthest-first valid wins)
    //====================================================
    if(mode == SL_FAREST_P_GRID)
       return SL_SearchGridLevels(state, anchor, winnerSide, currentSL, false);
+      
+   //====================================================
+   // MODE 6: no grid — nearest level
+   //====================================================
+   if(mode == SL_F_LEVEL)
+     {
+      double candidate = (winnerSide == POSITION_TYPE_BUY) ? (bid - minStop) : (ask + minStop);
+      return candidate;
+     }
 
    return 0;
 }

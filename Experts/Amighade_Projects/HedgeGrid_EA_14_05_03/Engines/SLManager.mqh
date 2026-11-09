@@ -75,36 +75,20 @@ double CalculateSLCandidate(GridState &state,
 {
    double slLevel = SL_FindCandidate(state, winnerSide, magicNumber, mode);
    if(slLevel <= 0.0) return 0.0;
-
-   double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double ask     = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double minStop = MinStopDistancePrice(_Symbol);
+   
    double tick    = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
    double oldSL   = state.slLevel;
+   slLevel = NormalizeDouble(MathFloor(slLevel / tick) * tick, _Digits);
 
    if(tick <= 0.0) return 0.0;
 
    if(winnerSide == POSITION_TYPE_BUY)
      {
-//      slLevel = MathMin(slLevel, bid - minStop);
-      slLevel = NormalizeDouble(MathFloor(slLevel / tick) * tick, _Digits);
-
-//      if(slLevel <= 0.0 || slLevel >= bid)
-//       || slLevel > bid - minStop)
-         return 0.0;
-
       if(oldSL > 0.0 && slLevel <= oldSL)
          return 0.0;
      }
    else if(winnerSide == POSITION_TYPE_SELL)
      {
-//      slLevel = MathMax(slLevel, ask + minStop);
-      slLevel = NormalizeDouble(MathCeil(slLevel / tick) * tick, _Digits);
-
-//      if(slLevel <= ask || slLevel <= ask)
-//     || slLevel < ask + minStop)
-         return 0.0;
-
       if(oldSL > 0.0 && slLevel >= oldSL)
          return 0.0;
      }

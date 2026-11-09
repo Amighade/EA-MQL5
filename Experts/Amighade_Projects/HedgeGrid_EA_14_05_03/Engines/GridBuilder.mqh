@@ -530,6 +530,8 @@ void ProcessPassRefill(GridState &state, double fillPrice, ENUM_POSITION_TYPE fi
       return;
      }
 
+   state.passCounter++;
+
    ENUM_ORDER_TYPE refillType = (state.runSide == 1) ? ORDER_TYPE_BUY_STOP : ORDER_TYPE_SELL_STOP;
 
    for(int i = 0; i < ArraySize(state.runLevels); i++)
