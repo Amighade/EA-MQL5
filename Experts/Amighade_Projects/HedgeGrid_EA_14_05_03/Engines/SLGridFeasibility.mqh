@@ -202,7 +202,8 @@ double SL_FindCandidate(GridState &state, ENUM_POSITION_TYPE winnerSide,
    //====================================================
    if(mode == SL_F_LEVEL)
      {
-      double candidate = (winnerSide == POSITION_TYPE_BUY) ? (bid - minStop) : (ask + minStop);
+//      double candidate = (winnerSide == POSITION_TYPE_BUY) ? (bid - minStop) : (ask + minStop);
+      double candidate = (winnerSide == POSITION_TYPE_BUY) ? (bid) : (ask);
       return candidate;
      }
 
