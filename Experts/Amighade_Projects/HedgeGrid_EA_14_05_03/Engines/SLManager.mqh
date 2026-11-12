@@ -247,7 +247,7 @@ void TrailWall(GridState &state)
    ENUM_POSITION_TYPE winnerSide = (ENUM_POSITION_TYPE)state.slWinnerSide;
                   
    double slLevel = 0.0;
-   if (state.runawayTriggered)
+   if (state.runawayTriggered && InpRunawaySLTrailMode != SL_NONE)
    slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpRunawaySLTrailMode);
    else
    slLevel = CalculateSLCandidate(state, winnerSide, state.magicNumber, InpSLTrailMode);
@@ -272,7 +272,7 @@ void ProcessSLManager(GridState &state)
 {
    if(state.slWallArmed)
      {
-      if(InpSLTrailMode != SL_NONE || state.runawayTriggered) TrailWall(state);
+      if(InpSLTrailMode != SL_NONE || (state.runawayTriggered && InpRunawaySLTrailMode != SL_NONE)) TrailWall(state);
       return;
      }
 
