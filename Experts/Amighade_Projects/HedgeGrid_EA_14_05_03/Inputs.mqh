@@ -52,9 +52,10 @@ enum ENUM_SL_MODE
    SL_N_GRID         = 3,  // SL = N GRID (no net check)
    SL_NEAREST_P_GRID = 4,  // SL = AUTO SEARCH (nearest-first valid wins)
    SL_FAREST_P_GRID  = 5,  // SL = AUTO SEARCH (farthest-first valid wins)
-   SL_F_LEVEL        = 6,  // SL = FIRST LEVEL
+   SL_F_PRICE_LEVEL  = 6,  // SL = FIRST PRICE LEVEL
+   SL_F_BROAKER_LEVEL= 7,  // SL = FIRST BROAKER LEVEL
   };
-
+   
 enum ENUM_LOT_MODE
   {
    LOT_FULL = 0,  // Full ladder/count
